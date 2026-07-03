@@ -1,0 +1,71 @@
+Hud
+{
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	font-family: arial;
+	pointer-events: none;
+
+	.melon-racer-hud
+	{
+		position: absolute;
+		top: 30px;
+		left: 30px;
+		flex-direction: column;
+		gap: 8px;
+		align-items: flex-start;
+		font-family: arial;
+		font-weight: bold;
+		font-size: 18px;
+		line-height: 20px;
+		text-shadow: 1px 1px 2px rgba( 0, 0, 0, 0.85 );
+	}
+
+	.hud-section
+	{
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	.podium
+	{
+		gap: 0;
+	}
+
+	.podium-place
+	{
+		color: rgba( 235, 235, 235, 0.9 );
+		height: 20px;
+	}
+
+	.podium-place.leader
+	{
+		color: #e5e727;
+	}
+
+	.stats
+	{
+		gap: 0;
+	}
+
+	.stat-row
+	{
+		flex-direction: row;
+		align-items: center;
+		min-width: 250px;
+		height: 20px;
+	}
+
+	.stat-label
+	{
+		width: 170px;
+		color: rgba( 205, 205, 205, 0.74 );
+	}
+
+	.stat-value
+	{
+		color: rgba( 245, 245, 245, 0.94 );
+	}
+}

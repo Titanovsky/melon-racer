@@ -1,0 +1,447 @@
+{
+  "__guid": "325a4042-0696-43dd-a79d-dcc314299ba3",
+  "GameObjects": [
+    {
+      "__guid": "6a638c0d-ea9b-487f-a917-bc79ce364e79",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "Scene Information",
+      "Position": "0,0,0",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Sandbox.SceneInformation",
+          "__guid": "7a08b1de-3952-4baa-8329-81c659c932fb",
+          "__enabled": true,
+          "Flags": 0,
+          "Author": null,
+          "Changes": null,
+          "Description": "",
+          "Group": null,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "SceneTags": "",
+          "Title": "minimal",
+          "Version": null
+        }
+      ],
+      "Children": []
+    },
+    {
+      "__guid": "185ac28a-fc76-4f06-8ea7-68f160531851",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "GameManager",
+      "Position": "2250.32642,1787.65051,678.75293",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Ambi.MelonRacer.GameManager",
+          "__guid": "985e1fe2-4479-4dfb-8cb1-b33836375f20",
+          "__enabled": true,
+          "Flags": 0,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        }
+      ],
+      "Children": []
+    },
+    {
+      "__guid": "df192393-c35a-444d-928e-4f23c9d56e5f",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "UI",
+      "Position": "2214.77148,734.363159,345.963989",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Sandbox.ScreenPanel",
+          "__guid": "339215b9-e868-47d5-8e8e-2af48894537c",
+          "__enabled": true,
+          "Flags": 0,
+          "AutoScreenScale": true,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Opacity": 1,
+          "Scale": 1,
+          "ScaleStrategy": "ConsistentHeight",
+          "TargetCamera": null,
+          "ZIndex": 100
+        },
+        {
+          "__type": "Sandbox.Hud",
+          "__guid": "30ff5684-175a-47e8-bfa6-6d052285738d",
+          "__enabled": true,
+          "Flags": 0,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        }
+      ],
+      "Children": []
+    },
+    {
+      "__guid": "3ee1c9f4-07be-4e0b-8b23-67bee2d8ec8a",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "Camera",
+      "Position": "-267.451996,-379.653015,297.790314",
+      "Rotation": "-0.144858196,0.286023915,0.427963108,0.845017076",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Sandbox.CameraComponent",
+          "__guid": "cf3cbf96-22b6-4be4-a5d0-672a96c17f9f",
+          "__enabled": true,
+          "Flags": 0,
+          "BackgroundColor": "0.33333,0.46275,0.52157,1",
+          "ClearFlags": "All",
+          "EnablePostProcessing": true,
+          "FieldOfView": 75,
+          "FovAxis": "Horizontal",
+          "IsMainCamera": true,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Orthographic": false,
+          "OrthographicHeight": 1204,
+          "PostProcessAnchor": null,
+          "Priority": 1,
+          "RenderExcludeTags": "",
+          "RenderTags": "",
+          "RenderTexture": null,
+          "TargetEye": "None",
+          "Viewport": "0,0,1,1",
+          "ZFar": 10000,
+          "ZNear": 1
+        },
+        {
+          "__type": "Sandbox.Bloom",
+          "__guid": "d73ef723-c888-41d4-802e-f797c79318be",
+          "__enabled": true,
+          "Flags": 0,
+          "__version": 1,
+          "Filter": "Bilinear",
+          "Gamma": 2.2,
+          "Mode": "Additive",
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Strength": 0.5,
+          "Threshold": 1.25,
+          "Tint": "1,1,1,1"
+        }
+      ],
+      "Children": []
+    },
+    {
+      "__guid": "ec71de63-7161-49ce-becd-1f005eebb6c1",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "--- Map ---",
+      "Position": "2214.77148,734.363159,345.963989",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [],
+      "Children": []
+    },
+    {
+      "__guid": "00344a8c-fa5e-45ae-b12a-10bb781a1dc3",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "2D Skybox",
+      "Position": "0,0,0",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "skybox",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Sandbox.SkyBox2D",
+          "__guid": "de79e9e0-5c37-4c54-ac67-bfcdb1d5483b",
+          "__enabled": true,
+          "Flags": 0,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "SkyIndirectLighting": true,
+          "SkyMaterial": "materials/skybox/skybox_day_01.vmat",
+          "Tint": "1,1,1,1"
+        },
+        {
+          "__type": "Sandbox.EnvmapProbe",
+          "__guid": "f3e304db-baab-4c1a-a4ec-8442585c2d62",
+          "__enabled": true,
+          "Flags": 0,
+          "__version": 1,
+          "BakedTexture": "scenes/minimal_scene_data/envmap/bake_f3e304db-baab-4c1a-a4ec-8442585c2d62.vtex",
+          "Bounds": {
+            "Mins": "-5309.35645,-9936.39941,25.3552856",
+            "Maxs": "4830.20068,9062.54492,1071.7854"
+          },
+          "DelayBetweenUpdates": 0.1,
+          "Feathering": 0.02,
+          "FrameInterval": 5,
+          "MaxDistance": 512,
+          "Mode": "Baked",
+          "MultiBounce": false,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Priority": 0,
+          "Projection": "Sphere",
+          "RenderExcludeTags": "",
+          "Resolution": "Medium",
+          "Texture": "textures/cubemaps/default2.vtex",
+          "TintColor": "1,1,1,1",
+          "UpdateStrategy": "OnEnabled",
+          "ZFar": 4096,
+          "ZNear": 16
+        }
+      ],
+      "Children": []
+    },
+    {
+      "__guid": "bfc59c12-1ed2-4f91-8956-a95a315eac3c",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "Sun",
+      "Position": "0,0,0",
+      "Rotation": "-0.0729314983,0.482239604,0.130543306,0.863182724",
+      "Scale": "1,1,1",
+      "Tags": "light_directional,light",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Sandbox.DirectionalLight",
+          "__guid": "d3659344-a90d-48fa-927a-095f70fe041f",
+          "__enabled": true,
+          "Flags": 0,
+          "Contribution": "Diffuse, Specular, Transmissive",
+          "FogMode": "Enabled",
+          "FogStrength": 1,
+          "LightColor": "0.94419,0.97767,1,1",
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "ShadowBias": 0.0005,
+          "ShadowCascadeCount": 4,
+          "ShadowCascadeSplitRatio": 0.91,
+          "ShadowHardness": 0,
+          "Shadows": true,
+          "SkyColor": "0.2532,0.32006,0.35349,1",
+          "Visualizer": {}
+        }
+      ],
+      "Children": []
+    },
+    {
+      "__guid": "d7dc680d-18ff-422f-936a-6477b8e965f9",
+      "__version": 2,
+      "__Prefab": "prefabs/melon.prefab",
+      "__PrefabInstancePatch": {
+        "AddedObjects": [],
+        "RemovedObjects": [],
+        "PropertyOverrides": [
+          {
+            "Target": {
+              "Type": "GameObject",
+              "IdValue": "e9cbce2b-ce3e-4d17-9835-60a8880ab09d"
+            },
+            "Property": "Position",
+            "Value": "2546.75928,-7542.87939,215.761475"
+          },
+          {
+            "Target": {
+              "Type": "GameObject",
+              "IdValue": "e9cbce2b-ce3e-4d17-9835-60a8880ab09d"
+            },
+            "Property": "Rotation",
+            "Value": "-0.0721330792,0.0657277703,0.735634983,0.670311749"
+          }
+        ],
+        "MovedObjects": []
+      },
+      "__PrefabIdToInstanceId": {
+        "e9cbce2b-ce3e-4d17-9835-60a8880ab09d": "d7dc680d-18ff-422f-936a-6477b8e965f9",
+        "103d0a06-5ea9-4031-8e0e-c9d6581c5101": "28b4777d-8b09-4312-9ee6-9f0d6f6c77d2",
+        "08991f56-7c78-4b01-b37e-76f4dbf2d271": "90906a6b-8ace-4749-a561-4d4e4f9674fb",
+        "e1e7e783-6a2b-42fa-893e-701b359d1901": "098105e2-9c63-4c42-875e-10185edea0b5",
+        "8b13b633-7762-4da2-997f-b065f398d035": "ebd4acbd-c709-4387-8a7d-8dc1de957fac"
+      }
+    },
+    {
+      "__guid": "503047a9-7489-4849-a6d3-b91f05bbffbd",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "map_lestoria",
+      "Position": "1957.71631,-7941.84229,374.961151",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [],
+      "Children": []
+    },
+    {
+      "__guid": "d3aa0bfe-445f-43fa-8aa6-1c6f7375aedc",
+      "__version": 2,
+      "Flags": 0,
+      "Name": "Map",
+      "Position": "0,0,0",
+      "Rotation": "0,0,0,1",
+      "Scale": "1,1,1",
+      "Tags": "",
+      "Enabled": true,
+      "NetworkMode": 2,
+      "NetworkFlags": 0,
+      "NetworkOrphaned": 0,
+      "NetworkTransmit": true,
+      "OwnerTransfer": 1,
+      "Components": [
+        {
+          "__type": "Sandbox.MapInstance",
+          "__guid": "8e3c7823-d277-43f6-bc1e-f533d62474cf",
+          "__enabled": true,
+          "Flags": 0,
+          "__version": 1,
+          "EnableCollision": true,
+          "MapName": "maps/melon_lestoria.vmap",
+          "NoOrigin": false,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "OnMapLoaded": null,
+          "OnMapUnloaded": null,
+          "UseMapFromLaunch": false
+        }
+      ],
+      "Children": []
+    }
+  ],
+  "SceneProperties": {
+    "NetworkInterpolation": true,
+    "TimeScale": 1,
+    "WantsSystemScene": true,
+    "Metadata": {
+      "Title": "minimal"
+    },
+    "NavMesh": {
+      "Enabled": false,
+      "IncludeStaticBodies": true,
+      "IncludeKeyframedBodies": true,
+      "EditorAutoUpdate": true,
+      "AgentHeight": 64,
+      "AgentRadius": 16,
+      "AgentStepSize": 18,
+      "AgentMaxSlope": 40,
+      "ExcludedBodies": "",
+      "IncludedBodies": "",
+      "DeferGeneration": false,
+      "CustomBounds": false
+    },
+    "GameObjectSystems": {
+      "Sandbox.Clutter.ClutterGridSystem": {
+        "Storage": {
+          "$blob": "e381c4ef-4e8c-4b11-9f8d-06feeec59837"
+        }
+      },
+      "Sandbox.SelectionSetsSystem": {
+        "Data": {
+          "SelectionSets": []
+        }
+      }
+    }
+  },
+  "ResourceVersion": 3,
+  "Title": "minimal",
+  "Description": null,
+  "__references": [],
+  "__version": 3
+}

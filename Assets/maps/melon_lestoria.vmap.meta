@@ -1,0 +1,24 @@
+{
+  "publish": {
+    "Enabled": false,
+    "ProjectConfig": {
+      "Title": "Melon Lestoria",
+      "Type": "map",
+      "Org": "local",
+      "Ident": "melon_lestoria",
+      "Schema": 0,
+      "IncludeSourceFiles": false,
+      "Resources": null,
+      "PackageReferences": [],
+      "EditorReferences": [
+        "rustextended.terrain_blend_a#43398"
+      ],
+      "Mounts": null,
+      "IsStandaloneOnly": false,
+      "Metadata": {
+        "SingleAssetSource": "maps/melon_lestoria.vmap",
+        "ParentPackage": "ambi.melon_racer"
+      }
+    }
+  }
+}

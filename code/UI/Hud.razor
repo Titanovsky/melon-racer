@@ -1,0 +1,79 @@
+@using Sandbox;
+@using Sandbox.UI;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root>
+	<div class="melon-racer-hud">
+		<div class="hud-section podium">
+			@for ( var i = 0; i < PodiumNames.Length; i++ )
+			{
+				<div class="@GetPodiumPlaceClass( i )">
+					<span>@(i + 1). @PodiumNames[i]</span>
+				</div>
+			}
+		</div>
+
+		<div class="hud-section stats">
+			@foreach ( var row in GlobalLapRows )
+			{
+				<div class="stat-row">
+					<span class="stat-label">@row.Label</span>
+					<span class="stat-value">@row.Value</span>
+				</div>
+			}
+		</div>
+
+		<div class="hud-section stats">
+			@foreach ( var row in PlayerLapRows )
+			{
+				<div class="stat-row">
+					<span class="stat-label">@row.Label</span>
+					<span class="stat-value">@row.Value</span>
+				</div>
+			}
+		</div>
+
+		<div class="hud-section stats">
+			<div class="stat-row">
+				<span class="stat-label">Laps:</span>
+				<span class="stat-value">@CurrentLap / 10</span>
+			</div>
+		</div>
+	</div>
+</root>
+
+@code
+{
+	//todo: replace with live race standings from the game/race manager.
+	private readonly string[] PodiumNames = new[]
+	{
+		"Landayne",
+		"n/a",
+		"n/a"
+	};
+
+	//todo: replace with the actual best lap time and player name.
+	private readonly (string Label, string Value)[] GlobalLapRows = new[]
+	{
+		("Best Lap:", "0:12:660"),
+		("Best Lap By:", "Landayne")
+	};
+
+	//todo: replace with local player's lap timings.
+	private readonly (string Label, string Value)[] PlayerLapRows = new[]
+	{
+		("Your Best Lap:", "0:12:660"),
+		("Your Last Lap:", "0:12:734")
+	};
+
+	//todo: replace with local player's current lap from race state.
+	private readonly int CurrentLap = 5;
+
+	private string GetPodiumPlaceClass( int index )
+	{
+		return index == 0 ? "podium-place leader" : "podium-place";
+	}
+
+	protected override int BuildHash() => System.HashCode.Combine(CurrentLap);
+}
