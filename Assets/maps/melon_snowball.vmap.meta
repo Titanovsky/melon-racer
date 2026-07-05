@@ -2,23 +2,23 @@
   "publish": {
     "Enabled": true,
     "ProjectConfig": {
-      "Title": "Melon Lestoria",
+      "Title": "Melon Snowball",
       "Type": "map",
       "Org": "titanovsky",
-      "Ident": "melon_lestoria",
+      "Ident": "melon_snowball",
       "Schema": 0,
       "IncludeSourceFiles": false,
       "Resources": null,
       "PackageReferences": [],
       "EditorReferences": [
         "ambi.burnt_tree_1#51364",
-        "facepunch.beech_bush_small#145429",
-        "rustextended.terrain_blend_a#43398"
+        "rustextended.terrain_snow#43383",
+        "titanovsky.christmas_tree#12251"
       ],
       "Mounts": null,
       "IsStandaloneOnly": false,
       "Metadata": {
-        "SingleAssetSource": "maps/melon_lestoria.vmap",
+        "SingleAssetSource": "maps/melon_snowball.vmap",
         "ParentPackage": "ambi.melon_racer"
       }
     }

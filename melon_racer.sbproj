@@ -30,6 +30,7 @@
       "Keyboard": true,
       "VR": false,
       "Gamepad": false
-    }
+    },
+    "MapStartupScene": "scenes/minimal.scene"
   }
 }

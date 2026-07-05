@@ -1,31 +1,16 @@
 @using Sandbox;
 @using Sandbox.UI;
+@using Ambi.MelonRacer;
+@using System;
+@using System.Linq;
 @inherits PanelComponent
 @namespace Sandbox
 
 <root>
 	<div class="melon-racer-hud">
-		<div class="hud-section podium">
-			@for ( var i = 0; i < PodiumNames.Length; i++ )
-			{
-				<div class="@GetPodiumPlaceClass( i )">
-					<span>@(i + 1). @PodiumNames[i]</span>
-				</div>
-			}
-		</div>
 
 		<div class="hud-section stats">
-			@foreach ( var row in GlobalLapRows )
-			{
-				<div class="stat-row">
-					<span class="stat-label">@row.Label</span>
-					<span class="stat-value">@row.Value</span>
-				</div>
-			}
-		</div>
-
-		<div class="hud-section stats">
-			@foreach ( var row in PlayerLapRows )
+			@foreach ( var row in RaceRows )
 			{
 				<div class="stat-row">
 					<span class="stat-label">@row.Label</span>
@@ -37,7 +22,7 @@
 		<div class="hud-section stats">
 			<div class="stat-row">
 				<span class="stat-label">Laps:</span>
-				<span class="stat-value">@CurrentLap / 10</span>
+				<span class="stat-value">@CompletedLaps / @TotalLaps</span>
 			</div>
 		</div>
 	</div>
@@ -45,35 +30,44 @@
 
 @code
 {
-	//todo: replace with live race standings from the game/race manager.
-	private readonly string[] PodiumNames = new[]
+	private GameManager Manager => GameManager.Instance;
+	private Melon LocalMelon => Scene.GetAllComponents<Melon>().FirstOrDefault( melon => !melon.IsProxy );
+
+	private (string Label, string Value)[] RaceRows => new[]
 	{
-		"Landayne",
-		"n/a",
-		"n/a"
+		("Race Time:", FormatTime( RaceTime )),
+		("Active Segment:", LocalMelon?.ActiveSegmentId.ToString() ?? "n/a"),
+		("Your Best Lap:", FormatTimeOrEmpty( LocalMelon?.BestLapTime ?? 0f )),
+		("Your Last Lap:", FormatTimeOrEmpty( LocalMelon?.LastLapTime ?? 0f )),
+		("Finished:", LocalMelon?.HasFinishedRace == true ? "yes" : "no")
 	};
 
-	//todo: replace with the actual best lap time and player name.
-	private readonly (string Label, string Value)[] GlobalLapRows = new[]
-	{
-		("Best Lap:", "0:12:660"),
-		("Best Lap By:", "Landayne")
-	};
+	private float RaceTime => Manager?.RaceElapsed ?? 0f;
+	private int CompletedLaps => LocalMelon?.CompletedLaps ?? 0;
+	private int TotalLaps => Manager?.TotalLaps ?? 0;
 
-	//todo: replace with local player's lap timings.
-	private readonly (string Label, string Value)[] PlayerLapRows = new[]
+	private static string FormatTimeOrEmpty( float seconds )
 	{
-		("Your Best Lap:", "0:12:660"),
-		("Your Last Lap:", "0:12:734")
-	};
-
-	//todo: replace with local player's current lap from race state.
-	private readonly int CurrentLap = 5;
-
-	private string GetPodiumPlaceClass( int index )
-	{
-		return index == 0 ? "podium-place leader" : "podium-place";
+		return seconds > 0f ? FormatTime( seconds ) : "--:--:---";
 	}
 
-	protected override int BuildHash() => System.HashCode.Combine(CurrentLap);
+	private static string FormatTime( float seconds )
+	{
+		var time = TimeSpan.FromSeconds( Math.Max( 0f, seconds ) );
+		return $"{time.Minutes:00}:{time.Seconds:00}:{time.Milliseconds:000}";
+	}
+
+	protected override int BuildHash()
+	{
+		var melon = LocalMelon;
+
+		return HashCode.Combine(
+			(int)(RaceTime * 10f),
+			CompletedLaps,
+			TotalLaps,
+			melon?.ActiveSegmentId ?? -1,
+			(int)((melon?.BestLapTime ?? 0f) * 1000f),
+			(int)((melon?.LastLapTime ?? 0f) * 1000f),
+			melon?.HasFinishedRace ?? false );
+	}
 }

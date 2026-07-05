@@ -1,0 +1,15 @@
+@using Sandbox;
+@using Sandbox.UI;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root>
+	<div class="title">@Name</div>
+</root>
+
+@code
+{
+	public string Name { get; set; } = "";
+
+	protected override int BuildHash() => System.HashCode.Combine(Name);
+}

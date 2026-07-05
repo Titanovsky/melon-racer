@@ -5,11 +5,14 @@ namespace Ambi.MelonRacer;
 
 public sealed class Melon : Component
 {
-	[Property] public ModelRenderer Renderer { get; set; }
+    public static Melon Local { get; private set; }
+
+    [Property] public ModelRenderer Renderer { get; set; }
 	[Property] public Rigidbody Rigidbody { get; set; }
 	[Property] public SphereCollider Collider { get; set; }
+    [Property] public PlayerWorldHud WorldHud { get; set; }
 
-	[Property, Group( "Movement" )] public float Speed { get; set; } = 500f;
+    [Property, Group( "Movement" )] public float Speed { get; set; } = 500f;
 	[Property, Group( "Movement" )] public float Inertia { get; set; } = 3f;
 
 	[Property, Group( "Jump" )] public float JumpForce { get; set; } = 400f;
@@ -22,6 +25,13 @@ public sealed class Melon : Component
 	[Property, Group( "Camera" )] public float CameraRotateSpeed { get; set; } = 4f;
 	[Property, Group( "Camera" )] public float CameraSensitivity { get; set; } = 0.15f;
 	[Property, Group( "Camera" )] public float AutoFollowDelay { get; set; } = 1.5f;
+
+	[Sync( SyncFlags.FromHost )] public int ActiveSegmentId { get; private set; }
+	[Sync( SyncFlags.FromHost )] public int CompletedLaps { get; private set; }
+	[Sync( SyncFlags.FromHost )] public float CurrentLapStartedAt { get; private set; }
+	[Sync( SyncFlags.FromHost )] public float LastLapTime { get; private set; }
+	[Sync( SyncFlags.FromHost )] public float BestLapTime { get; private set; }
+	[Sync( SyncFlags.FromHost )] public bool HasFinishedRace { get; private set; }
 
 	private TimeUntil _jumpReady;
 	private TimeUntil _autoFollowReady;
@@ -118,13 +128,31 @@ public sealed class Melon : Component
 			1f - MathF.Exp( -CameraSmooth * Time.Delta ) );
 	}
 
-    protected override void OnStart()
-    {
+	[Rpc.Broadcast]
+	private void SetupName()
+	{
+		WorldHud.Name = Connection.Local.Name;
+	}
+
+	protected override void OnStart()
+	{
+		if (!IsProxy)
+		{
+			Local = this;
+			SetupName();
+		}
+
         _followPosition = WorldPosition;
+
+		if ( Networking.IsHost )
+			GameManager.Instance?.RegisterMelon( this );
     }
 
     protected override void OnFixedUpdate()
     {
+		if ( IsProxy )
+			return;
+
         if (!Rigidbody.IsValid())
             return;
 
@@ -143,8 +171,61 @@ public sealed class Melon : Component
         }
     }
 
+    protected override void OnDestroy()
+    {
+		if (Local != null)
+			Local = null;
+    }
+
     protected override void OnUpdate()
     {
+		if ( IsProxy )
+			return;
+
         UpdateCamera();
     }
+
+	public void ResetRaceProgress( int activeSegmentId, float raceElapsed )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		ActiveSegmentId = activeSegmentId;
+		CompletedLaps = 0;
+		CurrentLapStartedAt = raceElapsed;
+		LastLapTime = 0f;
+		BestLapTime = 0f;
+		HasFinishedRace = false;
+	}
+
+	public void SetActiveSegment( int segmentId )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		ActiveSegmentId = segmentId;
+	}
+
+	public void CompleteLap( int completedLaps, float lapTime, int nextSegmentId, float raceElapsed )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		CompletedLaps = completedLaps;
+		LastLapTime = MathF.Max( 0f, lapTime );
+
+		if ( BestLapTime <= 0f || LastLapTime < BestLapTime )
+			BestLapTime = LastLapTime;
+
+		CurrentLapStartedAt = raceElapsed;
+		ActiveSegmentId = nextSegmentId;
+	}
+
+	public void FinishRace()
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		HasFinishedRace = true;
+	}
 }
