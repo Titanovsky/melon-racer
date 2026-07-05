@@ -3,7 +3,7 @@ using System;
 
 namespace Ambi.MelonRacer;
 
-public sealed class Melon : Component
+public sealed class Melon : Component, Component.ICollisionListener
 {
     public static Melon Local { get; private set; }
 
@@ -18,13 +18,23 @@ public sealed class Melon : Component
 	[Property, Group( "Jump" )] public float JumpForce { get; set; } = 400f;
 	[Property, Group( "Jump" )] public float JumpDelay { get; set; } = 0.5f;
 
-	[Property, Group( "Camera" )] public float CameraDistance { get; set; } = 250f;
-	[Property, Group( "Camera" )] public float CameraSmooth { get; set; } = 8f;
+	[Property, Group( "Smash" )] public float SmashSpeed { get; set; } = 700f;
+	[Property, Group( "Smash" )] public float SmashCooldown { get; set; } = 1f;
+
+	[Property, Group( "Camera" )] public float CameraSensitivity { get; set; } = 0.15f;
+	[Property, Group( "Camera" )] public float ZoomMin { get; set; } = 0f;
+	[Property, Group( "Camera" )] public float ZoomMax { get; set; } = 250f;
+	[Property, Group( "Camera" )] public float ZoomSpeed { get; set; } = 200f;
+	[Property, Group( "Camera" )] public float DefaultZoom { get; set; } = 100f;
+	[Property, Group( "Camera" )] public float CameraPitchMin { get; set; } = -30f;
+	[Property, Group( "Camera" )] public float CameraPitchMax { get; set; } = 80f;
+	[Property, Group( "Camera" )] public float CameraDriftCorrection { get; set; } = 3f;
 	[Property, Group( "Camera" )] public float CameraVerticalDeadZone { get; set; } = 4f;
 	[Property, Group( "Camera" )] public float CameraVerticalSmooth { get; set; } = 3f;
-	[Property, Group( "Camera" )] public float CameraRotateSpeed { get; set; } = 4f;
-	[Property, Group( "Camera" )] public float CameraSensitivity { get; set; } = 0.15f;
-	[Property, Group( "Camera" )] public float AutoFollowDelay { get; set; } = 1.5f;
+	[Property, Group( "Camera" )] public float CameraVerticalFollowLimit { get; set; } = 120f;
+
+	[Property, Group( "Hud" )] public float HudDriftCorrection { get; set; } = 3f;
+	[Property, Group( "Hud" )] public float HudVerticalSmooth { get; set; } = 8f;
 
 	[Sync( SyncFlags.FromHost )] public int ActiveSegmentId { get; private set; }
 	[Sync( SyncFlags.FromHost )] public int CompletedLaps { get; private set; }
@@ -34,9 +44,12 @@ public sealed class Melon : Component
 	[Sync( SyncFlags.FromHost )] public bool HasFinishedRace { get; private set; }
 
 	private TimeUntil _jumpReady;
-	private TimeUntil _autoFollowReady;
+	private TimeUntil _smashReady;
+	private Vector3 _worldHudOffset;
+	private Vector3 _hudPosition;
 	private Vector3 _moveDirection;
-	private Vector3 _followPosition;
+	private float _zoomDistance;
+	private Vector3 _focusPosition;
 	private bool _ignoreJumpVertical;
 	private float _cameraYaw;
 	private float _cameraPitch = 25f;
@@ -68,39 +81,8 @@ public sealed class Melon : Component
 	private void UpdateCamera()
 	{
 		var camera = Scene.Camera;
-
-		if ( Rigidbody.IsValid() )
-			_followPosition += Rigidbody.Velocity.WithZ( 0 ) * Time.Delta;
-
-		var isGrounded = IsGrounded();
-		var verticalVelocity = Rigidbody.IsValid() ? Rigidbody.Velocity.z : 0f;
-		if ( _ignoreJumpVertical && isGrounded && verticalVelocity <= 0f )
-			_ignoreJumpVertical = false;
-
-		var canFollowVertical = isGrounded && !_ignoreJumpVertical;
-		var horizontalError = WorldPosition.WithZ( _followPosition.z ) - _followPosition;
-		var verticalError = WorldPosition.z - _followPosition.z;
-		if ( horizontalError.Length > 50f )
-		{
-			_followPosition = canFollowVertical ? WorldPosition : WorldPosition.WithZ( _followPosition.z );
-		}
-		else if ( canFollowVertical && MathF.Abs( verticalError ) > 50f )
-		{
-			_followPosition = WorldPosition;
-		}
-		else
-		{
-			var horizontalTarget = WorldPosition.WithZ( _followPosition.z );
-			_followPosition = _followPosition.LerpTo( horizontalTarget, 1f - MathF.Exp( -CameraSmooth * 0.5f * Time.Delta ) );
-
-			var verticalDeadZone = MathF.Max( 0f, CameraVerticalDeadZone );
-			if ( canFollowVertical && MathF.Abs( verticalError ) > verticalDeadZone )
-			{
-				var verticalTarget = WorldPosition.z - MathF.Sign( verticalError ) * verticalDeadZone;
-				var verticalLerp = 1f - MathF.Exp( -MathF.Max( 0f, CameraVerticalSmooth ) * Time.Delta );
-				_followPosition = _followPosition.WithZ( _followPosition.z + (verticalTarget - _followPosition.z) * verticalLerp );
-			}
-		}
+		if ( !camera.IsValid() )
+			return;
 
 		var look = Input.AnalogLook;
 		if ( !look.IsNearlyZero() )
@@ -108,41 +90,86 @@ public sealed class Melon : Component
 			var sensitivity = Preferences.Sensitivity * CameraSensitivity;
 
 			_cameraYaw += look.yaw * sensitivity;
-			_cameraPitch = ( _cameraPitch + look.pitch * sensitivity ).Clamp( 5f, 70f );
-			_autoFollowReady = AutoFollowDelay;
+			_cameraPitch = ( _cameraPitch + look.pitch * sensitivity ).Clamp( CameraPitchMin, CameraPitchMax );
 		}
 
-		var velocity = Rigidbody.IsValid() ? Rigidbody.Velocity.WithZ( 0 ) : Vector3.Zero;
-		if ( _autoFollowReady && velocity.Length > 10f )
-		{
-			var targetYaw = velocity.EulerAngles.yaw;
-			_cameraYaw = MathX.LerpDegrees( _cameraYaw, targetYaw, Time.Delta * CameraRotateSpeed );
-		}
+		if ( Input.Down( "Run" ) )
+			_zoomDistance = MathF.Min( ZoomMax, _zoomDistance + ZoomSpeed * Time.Delta );
+		else if ( Input.Down( "Duck" ) )
+			_zoomDistance = MathF.Max( ZoomMin, _zoomDistance - ZoomSpeed * Time.Delta );
 
-		var orbitRotation = Rotation.From( _cameraPitch, _cameraYaw, 0f );
-		var targetPosition = _followPosition - orbitRotation.Forward * CameraDistance;
+		UpdateFocusPosition();
 
-		camera.WorldPosition = camera.WorldPosition.LerpTo( targetPosition, 1f - MathF.Exp( -CameraSmooth * Time.Delta ) );
-		camera.WorldRotation = Rotation.Slerp( camera.WorldRotation,
-			Rotation.LookAt( _followPosition + Vector3.Up * 20f - camera.WorldPosition ),
-			1f - MathF.Exp( -CameraSmooth * Time.Delta ) );
+		var eyeRotation = Rotation.From( _cameraPitch, _cameraYaw, 0f );
+		var targetPosition = _focusPosition - eyeRotation.Forward * _zoomDistance;
+
+		var trace = Scene.Trace
+			.Ray( _focusPosition, targetPosition )
+			.IgnoreGameObjectHierarchy( GameObject )
+			.Run();
+
+		camera.WorldPosition = trace.Hit
+			? trace.HitPosition + trace.Normal * 2f
+			: targetPosition;
+		camera.WorldRotation = eyeRotation;
 	}
 
-	[Rpc.Broadcast]
-	private void SetupName()
+	private void UpdateFocusPosition()
 	{
-		WorldHud.Name = Connection.Local.Name;
+		var horizontalError = (WorldPosition - _focusPosition).WithZ( 0 ).Length;
+		if ( horizontalError > 100f )
+		{
+			_focusPosition = WorldPosition;
+			return;
+		}
+
+		if ( Rigidbody.IsValid() )
+			_focusPosition += Rigidbody.Velocity.WithZ( 0 ) * Time.Delta;
+
+		var horizontalTarget = WorldPosition.WithZ( _focusPosition.z );
+		var driftLerp = 1f - MathF.Exp( -MathF.Max( 0f, CameraDriftCorrection ) * Time.Delta );
+		_focusPosition = _focusPosition.LerpTo( horizontalTarget, driftLerp );
+
+		var isGrounded = IsGrounded();
+		var verticalVelocity = Rigidbody.IsValid() ? Rigidbody.Velocity.z : 0f;
+		if ( _ignoreJumpVertical && isGrounded && verticalVelocity <= 0f )
+			_ignoreJumpVertical = false;
+
+		var verticalError = WorldPosition.z - _focusPosition.z;
+
+		var followLimit = MathF.Max( CameraVerticalDeadZone, CameraVerticalFollowLimit );
+		if ( MathF.Abs( verticalError ) > followLimit )
+		{
+			_focusPosition = _focusPosition.WithZ( WorldPosition.z - MathF.Sign( verticalError ) * followLimit );
+			verticalError = WorldPosition.z - _focusPosition.z;
+		}
+
+		if ( _ignoreJumpVertical )
+			return;
+
+		var deadZone = MathF.Max( 0f, CameraVerticalDeadZone );
+		if ( MathF.Abs( verticalError ) <= deadZone )
+			return;
+
+		var verticalTarget = WorldPosition.z - MathF.Sign( verticalError ) * deadZone;
+		var verticalLerp = 1f - MathF.Exp( -MathF.Max( 0f, CameraVerticalSmooth ) * Time.Delta );
+		_focusPosition = _focusPosition.WithZ( _focusPosition.z + (verticalTarget - _focusPosition.z) * verticalLerp );
 	}
 
 	protected override void OnStart()
 	{
 		if (!IsProxy)
-		{
 			Local = this;
-			SetupName();
+
+		if ( WorldHud.IsValid() )
+		{
+			WorldHud.Name = GameObject.Network.Owner?.Name ?? Connection.Local?.Name ?? "";
+			_worldHudOffset = WorldHud.GameObject.WorldPosition - WorldPosition;
+			_hudPosition = WorldHud.GameObject.WorldPosition;
 		}
 
-        _followPosition = WorldPosition;
+        _zoomDistance = DefaultZoom;
+		_focusPosition = WorldPosition;
 
 		if ( Networking.IsHost )
 			GameManager.Instance?.RegisterMelon( this );
@@ -182,6 +209,8 @@ public sealed class Melon : Component
 
     protected override void OnUpdate()
     {
+		UpdateWorldHud();
+
 		if ( IsProxy )
 			return;
 
@@ -191,15 +220,63 @@ public sealed class Melon : Component
         UpdateCamera();
     }
 
+	private void UpdateWorldHud()
+	{
+		if ( !WorldHud.IsValid() )
+			return;
+
+		var target = WorldPosition + _worldHudOffset;
+
+		if ( _hudPosition.Distance( target ) > 100f )
+		{
+			_hudPosition = target;
+		}
+		else
+		{
+			if ( Rigidbody.IsValid() )
+				_hudPosition += Rigidbody.Velocity.WithZ( 0 ) * Time.Delta;
+
+			var driftLerp = 1f - MathF.Exp( -MathF.Max( 0f, HudDriftCorrection ) * Time.Delta );
+			_hudPosition = _hudPosition.LerpTo( target.WithZ( _hudPosition.z ), driftLerp );
+
+			var verticalLerp = 1f - MathF.Exp( -MathF.Max( 0f, HudVerticalSmooth ) * Time.Delta );
+			_hudPosition = _hudPosition.WithZ( _hudPosition.z + (target.z - _hudPosition.z) * verticalLerp );
+		}
+
+		WorldHud.GameObject.WorldPosition = _hudPosition;
+		WorldHud.GameObject.WorldRotation = Rotation.Identity;
+	}
+
+	void Component.ICollisionListener.OnCollisionStart( Collision collision )
+	{
+		if ( IsProxy || !_smashReady )
+			return;
+
+		var impactSpeed = collision.Contact.Speed.Length;
+		if ( impactSpeed < SmashSpeed )
+			return;
+
+		_smashReady = SmashCooldown;
+		Log.Info( $"Melon smashed at speed {impactSpeed:0}" );
+		RequestSmash();
+	}
+
+	[Rpc.Host]
+	private void RequestSmash()
+	{
+		GameManager.Instance?.SmashMelon( this );
+	}
+
 	public void RespawnAt( Vector3 position, Rotation rotation )
 	{
 		GameObject.WorldPosition = position;
 		GameObject.WorldRotation = rotation;
 
-		_followPosition = position;
 		_moveDirection = Vector3.Zero;
+		_zoomDistance = DefaultZoom;
+		_focusPosition = position;
+		_hudPosition = position + _worldHudOffset;
 		_ignoreJumpVertical = false;
-		_autoFollowReady = 0f;
 
 		if ( !Rigidbody.IsValid() )
 			return;

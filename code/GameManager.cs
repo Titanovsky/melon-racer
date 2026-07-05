@@ -86,6 +86,15 @@ public sealed class GameManager : Component
         RespawnMelon( melon );
     }
 
+    public void SmashMelon( Melon melon )
+    {
+        if ( !Networking.IsHost || !melon.IsValid() )
+            return;
+
+        Log.Info( $"Melon smashed: {melon.GameObject.Network.Owner?.Name ?? melon.GameObject.Name}" );
+        RespawnMelon( melon );
+    }
+
     public void PassSegment( Melon melon, int segmentId )
     {
         if ( !Networking.IsHost || !melon.IsValid() || melon.HasFinishedRace )
@@ -319,10 +328,11 @@ public sealed class GameManager : Component
 
         _spawnedMapObject = GameObject.Clone( prefabPath );
         _spawnedMapObject.NetworkSpawn();
+        _spawnedMapObject.Network.SetOrphanedMode(NetworkOrphaned.Host);
         _spawnedMapPrefabPath = prefabPath;
 
-        CurrentMapInfo = _spawnedMapObject.GetComponentInChildren<global::MapInfo>( true, true );
-        CurrentMapInfo ??= Scene.GetAllComponents<global::MapInfo>().FirstOrDefault();
+        CurrentMapInfo = _spawnedMapObject.GetComponentInChildren<MapInfo>( true, true );
+        CurrentMapInfo ??= Scene.GetAllComponents<MapInfo>().FirstOrDefault();
     }
 
     private void RespawnAllMelons()

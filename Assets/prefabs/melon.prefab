@@ -20,12 +20,12 @@
         "__guid": "103d0a06-5ea9-4031-8e0e-c9d6581c5101",
         "__enabled": true,
         "Flags": 0,
-        "AutoFollowDelay": 1.5,
-        "CameraDistance": 190,
-        "CameraRotateSpeed": 2,
+        "CameraDriftCorrection": 3,
+        "CameraPitchMax": 80,
+        "CameraPitchMin": -30,
         "CameraSensitivity": 0.15,
-        "CameraSmooth": 10,
         "CameraVerticalDeadZone": 4,
+        "CameraVerticalFollowLimit": 120,
         "CameraVerticalSmooth": 3,
         "Collider": {
           "_type": "component",
@@ -33,9 +33,12 @@
           "go": "e9cbce2b-ce3e-4d17-9835-60a8880ab09d",
           "component_type": "SphereCollider"
         },
-        "Inertia": 3,
+        "DefaultZoom": 180,
+        "HudDriftCorrection": 1,
+        "HudVerticalSmooth": 1,
+        "Inertia": 10,
         "JumpDelay": 0.1,
-        "JumpForce": 500,
+        "JumpForce": 300,
         "OnComponentDestroy": null,
         "OnComponentDisabled": null,
         "OnComponentEnabled": null,
@@ -54,13 +57,18 @@
           "go": "e9cbce2b-ce3e-4d17-9835-60a8880ab09d",
           "component_type": "Rigidbody"
         },
+        "SmashCooldown": 1,
+        "SmashSpeed": 700,
         "Speed": 900,
         "WorldHud": {
           "_type": "component",
           "component_id": "5c77d20b-eac3-4092-9d09-87d80c44f9ee",
           "go": "62174d0a-5f3c-46e9-b905-4f70146d1d5e",
           "component_type": "PlayerWorldHud"
-        }
+        },
+        "ZoomMax": 250,
+        "ZoomMin": 0,
+        "ZoomSpeed": 200
       },
       {
         "__type": "Sandbox.ModelRenderer",
