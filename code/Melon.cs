@@ -153,6 +153,9 @@ public sealed class Melon : Component
 		if ( IsProxy )
 			return;
 
+		if ( GameManager.Instance?.IsMapVoteOpen == true )
+			return;
+
         if (!Rigidbody.IsValid())
             return;
 
@@ -173,7 +176,7 @@ public sealed class Melon : Component
 
     protected override void OnDestroy()
     {
-		if (Local != null)
+		if (Local == this)
 			Local = null;
     }
 
@@ -182,8 +185,35 @@ public sealed class Melon : Component
 		if ( IsProxy )
 			return;
 
+		if ( GameManager.Instance?.IsMapVoteOpen == true )
+			return;
+
         UpdateCamera();
     }
+
+	public void RespawnAt( Vector3 position, Rotation rotation )
+	{
+		GameObject.WorldPosition = position;
+		GameObject.WorldRotation = rotation;
+
+		_followPosition = position;
+		_moveDirection = Vector3.Zero;
+		_ignoreJumpVertical = false;
+		_autoFollowReady = 0f;
+
+		if ( !Rigidbody.IsValid() )
+			return;
+
+		Rigidbody.ClearForces();
+
+		if ( Rigidbody.PhysicsBody.IsValid() )
+		{
+			Rigidbody.PhysicsBody.Velocity = Vector3.Zero;
+			Rigidbody.PhysicsBody.AngularVelocity = Vector3.Zero;
+			Rigidbody.PhysicsBody.ClearForces();
+			Rigidbody.PhysicsBody.ClearTorque();
+		}
+	}
 
 	public void ResetRaceProgress( int activeSegmentId, float raceElapsed )
 	{

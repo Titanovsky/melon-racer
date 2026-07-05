@@ -2,7 +2,6 @@
 @using Sandbox.UI;
 @using Ambi.MelonRacer;
 @using System;
-@using System.Linq;
 @inherits PanelComponent
 @namespace Sandbox
 
@@ -31,7 +30,7 @@
 @code
 {
 	private GameManager Manager => GameManager.Instance;
-	private Melon LocalMelon => Scene.GetAllComponents<Melon>().FirstOrDefault( melon => !melon.IsProxy );
+	private Melon LocalMelon => Melon.Local;
 
 	private (string Label, string Value)[] RaceRows => new[]
 	{

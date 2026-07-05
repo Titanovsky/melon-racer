@@ -21,7 +21,7 @@
         "__enabled": true,
         "Flags": 0,
         "Header": "melon_snowball",
-        "Laps": 15,
+        "Laps": 1,
         "OnComponentDestroy": null,
         "OnComponentDisabled": null,
         "OnComponentEnabled": null,

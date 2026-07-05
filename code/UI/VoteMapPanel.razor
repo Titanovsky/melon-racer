@@ -1,0 +1,109 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Ambi.MelonRacer;
+@using System;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root class="@(IsOpen ? "open" : "closed")">
+	@if ( IsOpen )
+	{
+		<div class="vote-panel">
+			<div class="title">VOTE MAP</div>
+			<div class="timer">@VoteSecondsLeft</div>
+
+			@if ( HasVoted )
+			{
+				<div class="selected">
+					<div class="selected-label">YOU CHOSE</div>
+					<div class="selected-map">@GetMapTitle( _selectedMapName )</div>
+				</div>
+			}
+			else
+			{
+				<div class="map-list">
+					<button class="map-button" onclick=@VoteForFirstMap>
+						<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[0] )</div>
+						<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[0] ) VOTES</div>
+					</button>
+
+					<button class="map-button" onclick=@VoteForSecondMap>
+						<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[1] )</div>
+						<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[1] ) VOTES</div>
+					</button>
+				</div>
+			}
+		</div>
+	}
+</root>
+
+@code
+{
+	private GameManager Manager => GameManager.Instance;
+	private bool IsOpen => Manager?.IsMapVoteOpen == true;
+	private bool HasVoted => IsOpen && !string.IsNullOrWhiteSpace( _selectedMapName );
+	private int VoteSecondsLeft => (int)MathF.Ceiling( Manager?.MapVoteSecondsLeft ?? 0f );
+	private string _selectedMapName;
+
+	protected override void OnUpdate()
+	{
+		Mouse.Visible = IsOpen;
+	}
+
+	private void VoteForFirstMap()
+	{
+		Log.Info( "Vote first button clicked" );
+		VoteForMap( GameManager.MapVoteChoices[0] );
+	}
+
+	private void VoteForSecondMap()
+	{
+		Log.Info( "Vote second button clicked" );
+		VoteForMap( GameManager.MapVoteChoices[1] );
+	}
+
+	private void VoteForMap( string mapName )
+	{
+		if ( !IsOpen || HasVoted )
+			return;
+
+		_selectedMapName = mapName;
+		Log.Info( $"Vote button clicked: {mapName}" );
+		Manager?.VoteForMap( mapName );
+		StateHasChanged();
+	}
+
+	private int GetVotes( string mapName )
+	{
+		if ( Manager == null )
+			return 0;
+
+		if ( mapName == GameManager.MapVoteChoices[0] )
+			return Manager.LestoriaVotes;
+
+		if ( mapName == GameManager.MapVoteChoices[1] )
+			return Manager.SnowballVotes;
+
+		return 0;
+	}
+
+	private static string GetMapTitle( string mapName )
+	{
+		var parts = mapName.Split( '.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries );
+		return parts.Length >= 2 ? parts[1] : mapName;
+	}
+
+	protected override int BuildHash()
+	{
+		if ( !IsOpen && !string.IsNullOrWhiteSpace( _selectedMapName ) )
+			_selectedMapName = null;
+
+		return HashCode.Combine(
+			IsOpen,
+			_selectedMapName,
+			VoteSecondsLeft,
+			Manager?.LestoriaVotes,
+			Manager?.SnowballVotes,
+			Manager?.MapInstance?.MapName );
+	}
+}
