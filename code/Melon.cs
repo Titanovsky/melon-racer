@@ -21,6 +21,7 @@ public sealed class Melon : Component, Component.ICollisionListener
 	[Property, Group( "Smash" )] public float SmashSpeed { get; set; } = 700f;
 	[Property, Group( "Smash" )] public float SmashCooldown { get; set; } = 1f;
 
+	[Property, Group( "Camera" )] public bool EnableCameraSystem { get; set; } = true;
 	[Property, Group( "Camera" )] public float CameraSensitivity { get; set; } = 0.15f;
 	[Property, Group( "Camera" )] public float ZoomMin { get; set; } = 0f;
 	[Property, Group( "Camera" )] public float ZoomMax { get; set; } = 250f;
@@ -28,6 +29,9 @@ public sealed class Melon : Component, Component.ICollisionListener
 	[Property, Group( "Camera" )] public float DefaultZoom { get; set; } = 100f;
 	[Property, Group( "Camera" )] public float CameraPitchMin { get; set; } = -30f;
 	[Property, Group( "Camera" )] public float CameraPitchMax { get; set; } = 80f;
+	[Property, Group( "Camera" )] public float CameraPivotHeight { get; set; } = 12f;
+	[Property, Group( "Camera" )] public float CameraCollisionRadius { get; set; } = 8f;
+	[Property, Group( "Camera" )] public float CameraCollisionPadding { get; set; } = 2f;
 	[Property, Group( "Camera" )] public float CameraDriftCorrection { get; set; } = 3f;
 	[Property, Group( "Camera" )] public float CameraVerticalDeadZone { get; set; } = 4f;
 	[Property, Group( "Camera" )] public float CameraVerticalSmooth { get; set; } = 3f;
@@ -101,16 +105,29 @@ public sealed class Melon : Component, Component.ICollisionListener
 		UpdateFocusPosition();
 
 		var eyeRotation = Rotation.From( _cameraPitch, _cameraYaw, 0f );
-		var targetPosition = _focusPosition - eyeRotation.Forward * _zoomDistance;
+		var cameraPivot = _focusPosition + Vector3.Up * MathF.Max( 0f, CameraPivotHeight );
+		var targetPosition = cameraPivot - eyeRotation.Forward * _zoomDistance;
+		var collisionRadius = MathF.Max( 0.5f, CameraCollisionRadius );
+		var collisionPadding = MathF.Max( 0f, CameraCollisionPadding );
 
 		var trace = Scene.Trace
-			.Ray( _focusPosition, targetPosition )
+			.Sphere( collisionRadius, cameraPivot, targetPosition )
 			.IgnoreGameObjectHierarchy( GameObject )
 			.Run();
 
-		camera.WorldPosition = trace.Hit
-			? trace.HitPosition + trace.Normal * 2f
-			: targetPosition;
+		if ( trace.StartedSolid )
+		{
+			camera.WorldPosition = cameraPivot + Vector3.Up * (collisionRadius + collisionPadding);
+		}
+		else if ( trace.Hit )
+		{
+			camera.WorldPosition = trace.EndPosition + trace.Normal * collisionPadding;
+		}
+		else
+		{
+			camera.WorldPosition = targetPosition;
+		}
+
 		camera.WorldRotation = eyeRotation;
 	}
 
@@ -217,7 +234,8 @@ public sealed class Melon : Component, Component.ICollisionListener
 		if ( GameManager.Instance?.IsMapVoteOpen == true )
 			return;
 
-        UpdateCamera();
+		if ( EnableCameraSystem )
+			UpdateCamera();
     }
 
 	private void UpdateWorldHud()
