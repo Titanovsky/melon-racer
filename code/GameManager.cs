@@ -26,6 +26,7 @@ public sealed class GameManager : Component
     [Sync( SyncFlags.FromHost )] public int LestoriaVotes { get; private set; }
     [Sync( SyncFlags.FromHost )] public int SnowballVotes { get; private set; }
     [Sync( SyncFlags.FromHost )] public int TotalLaps { get; private set; } = 1;
+    [Sync( SyncFlags.FromHost )] public string ActiveMapName { get; private set; }
 
     public global::MapInfo CurrentMapInfo { get; private set; }
     public IReadOnlyList<int> SegmentIds => _segmentIds;
@@ -58,16 +59,24 @@ public sealed class GameManager : Component
     {
         HookMapEvents();
 
-        if ( !Networking.IsHost )
-            return;
+        if ( Networking.IsHost )
+            ActiveMapName = MapInstance.IsValid() ? MapInstance.MapName : string.Empty;
+        else
+            ApplyActiveMap();
 
         if ( MapInstance.IsValid() && MapInstance.IsLoaded )
-            StartRoundFromLoadedMap();
+            HandleMapLoaded();
     }
 
     protected override void OnUpdate()
     {
-        if ( !Networking.IsHost || !IsMapVoteOpen || !MapVoteTimer )
+        if ( !Networking.IsHost )
+        {
+            ApplyActiveMap();
+            return;
+        }
+
+        if ( !IsMapVoteOpen || !MapVoteTimer )
             return;
 
         FinishMapVote();
@@ -226,16 +235,12 @@ public sealed class GameManager : Component
             return;
 
         CloseMapVote();
-        SpawnMapInfoPrefab();
         SetupRace();
         RespawnAllMelons();
     }
 
     private void HandleMapUnloaded()
     {
-        if ( !Networking.IsHost )
-            return;
-
         if ( CurrentMapInfo.IsValid() )
             CurrentMapInfo.GameObject.Destroy();
         else if ( _spawnedMapObject.IsValid() )
@@ -245,6 +250,10 @@ public sealed class GameManager : Component
         _spawnedMapObject = null;
         _spawnedMapPrefabPath = null;
         _segmentIds.Clear();
+
+        if ( !Networking.IsHost )
+            return;
+
         IsRaceActive = false;
         CloseMapVote();
         TotalLaps = 1;
@@ -282,6 +291,8 @@ public sealed class GameManager : Component
         if ( !MapInstance.IsValid() )
             return;
 
+        ActiveMapName = mapName;
+
         if ( MapInstance.MapName == mapName )
         {
             StartRoundFromLoadedMap();
@@ -289,6 +300,17 @@ public sealed class GameManager : Component
         }
 
         MapInstance.MapName = mapName;
+    }
+
+    private void ApplyActiveMap()
+    {
+        if ( !MapInstance.IsValid() || string.IsNullOrWhiteSpace( ActiveMapName ) )
+            return;
+
+        if ( MapInstance.MapName == ActiveMapName )
+            return;
+
+        MapInstance.MapName = ActiveMapName;
     }
 
     private void CloseMapVote()
@@ -327,12 +349,25 @@ public sealed class GameManager : Component
             _spawnedMapObject.Destroy();
 
         _spawnedMapObject = GameObject.Clone( prefabPath );
-        _spawnedMapObject.NetworkSpawn();
-        _spawnedMapObject.Network.SetOrphanedMode(NetworkOrphaned.Host);
+        if ( !_spawnedMapObject.IsValid() )
+        {
+            Log.Warning( $"Failed to create MapInfo prefab: {prefabPath}" );
+            return;
+        }
+
+        MakeHierarchyLocal( _spawnedMapObject );
         _spawnedMapPrefabPath = prefabPath;
 
         CurrentMapInfo = _spawnedMapObject.GetComponentInChildren<MapInfo>( true, true );
         CurrentMapInfo ??= Scene.GetAllComponents<MapInfo>().FirstOrDefault();
+    }
+
+    private static void MakeHierarchyLocal( GameObject gameObject )
+    {
+        gameObject.NetworkMode = NetworkMode.Never;
+
+        foreach ( var child in gameObject.Children )
+            MakeHierarchyLocal( child );
     }
 
     private void RespawnAllMelons()
@@ -407,9 +442,17 @@ public sealed class GameManager : Component
         if ( _mapEventsHooked || !MapInstance.IsValid() )
             return;
 
-        MapInstance.OnMapLoaded += StartRoundFromLoadedMap;
+        MapInstance.OnMapLoaded += HandleMapLoaded;
         MapInstance.OnMapUnloaded += HandleMapUnloaded;
         _mapEventsHooked = true;
+    }
+
+    private void HandleMapLoaded()
+    {
+        SpawnMapInfoPrefab();
+
+        if ( Networking.IsHost )
+            StartRoundFromLoadedMap();
     }
 
     private void UnhookMapEvents()
@@ -417,7 +460,7 @@ public sealed class GameManager : Component
         if ( !_mapEventsHooked || !MapInstance.IsValid() )
             return;
 
-        MapInstance.OnMapLoaded -= StartRoundFromLoadedMap;
+        MapInstance.OnMapLoaded -= HandleMapLoaded;
         MapInstance.OnMapUnloaded -= HandleMapUnloaded;
         _mapEventsHooked = false;
     }

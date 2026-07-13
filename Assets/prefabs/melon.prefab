@@ -33,7 +33,7 @@
           "go": "e9cbce2b-ce3e-4d17-9835-60a8880ab09d",
           "component_type": "SphereCollider"
         },
-        "DefaultZoom": 180,
+        "DefaultZoom": 210,
         "HudDriftCorrection": 1,
         "HudVerticalSmooth": 1,
         "Inertia": 10,
