@@ -8,6 +8,8 @@ namespace Ambi.MelonRacer;
 public sealed class GameManager : Component
 {
     private const float MapVoteDuration = 10f;
+	private const float SpawnOverlapRadius = 16f;
+	private const float SpawnOverlapHeight = 10f;
 
     public static readonly string[] MapVoteChoices =
     {
@@ -18,6 +20,9 @@ public sealed class GameManager : Component
     public static GameManager Instance { get; private set; }
 
     [Property] public MapInstance MapInstance { get; set; }
+	[Property, Group( "Sounds" )] public SoundEvent ActiveSegmentSound { get; set; }
+	[Property, Group( "Sounds" )] public SoundEvent FinalSegmentSound { get; set; }
+	[Property, Group( "Sounds" )] public SoundEvent LevelStartSound { get; set; }
 
     [Sync( SyncFlags.FromHost )] public TimeUntil RaceTimer { get; private set; }
     [Sync( SyncFlags.FromHost )] public TimeUntil MapVoteTimer { get; private set; }
@@ -27,6 +32,7 @@ public sealed class GameManager : Component
     [Sync( SyncFlags.FromHost )] public int SnowballVotes { get; private set; }
     [Sync( SyncFlags.FromHost )] public int TotalLaps { get; private set; } = 1;
     [Sync( SyncFlags.FromHost )] public string ActiveMapName { get; private set; }
+    [Sync( SyncFlags.FromHost )] public int ActiveMapRevision { get; private set; }
 
     public global::MapInfo CurrentMapInfo { get; private set; }
     public IReadOnlyList<int> SegmentIds => _segmentIds;
@@ -36,6 +42,9 @@ public sealed class GameManager : Component
     private GameObject _spawnedMapObject;
     private bool _mapEventsHooked;
     private string _spawnedMapPrefabPath;
+    private string _pendingMapName;
+    private int _pendingMapRevision;
+    private int _appliedMapRevision;
 
     public float RaceElapsed => IsRaceActive ? MathF.Max( 0f, -(float)RaceTimer ) : 0f;
     public float MapVoteSecondsLeft => IsMapVoteOpen ? MathF.Max( 0f, MapVoteTimer.Relative ) : 0f;
@@ -70,11 +79,19 @@ public sealed class GameManager : Component
 
     protected override void OnUpdate()
     {
+		ApplyPendingMapChange();
+
         if ( !Networking.IsHost )
         {
             ApplyActiveMap();
             return;
         }
+
+		if ( IsMapVoteOpen && HaveAllPlayersVoted() )
+		{
+			FinishMapVote();
+			return;
+		}
 
         if ( !IsMapVoteOpen || !MapVoteTimer )
             return;
@@ -100,7 +117,17 @@ public sealed class GameManager : Component
         if ( !Networking.IsHost || !melon.IsValid() )
             return;
 
+        if ( !melon.BeginDeath() )
+            return;
+
         Log.Info( $"Melon smashed: {melon.GameObject.Network.Owner?.Name ?? melon.GameObject.Name}" );
+    }
+
+    public void RespawnSmashedMelon( Melon melon )
+    {
+        if ( !Networking.IsHost || !melon.IsValid() || !melon.IsDead )
+            return;
+
         RespawnMelon( melon );
     }
 
@@ -132,6 +159,41 @@ public sealed class GameManager : Component
             OpenMapVote();
         }
     }
+
+	public void PlayLocalSegmentSound( int segmentId, SoundEvent activeOverride = null, SoundEvent finalOverride = null )
+	{
+		if ( !IsRaceActive || IsMapVoteOpen )
+			return;
+
+		var sound = IsFinalSegment( segmentId )
+			? finalOverride ?? FinalSegmentSound
+			: activeOverride ?? ActiveSegmentSound;
+
+		if ( sound is not null )
+			Sound.Play( sound );
+	}
+
+	public bool IsFinalSegment( int segmentId )
+	{
+		IEnumerable<global::TriggerSegment> segments = CurrentMapInfo.IsValid()
+			? CurrentMapInfo.GameObject.GetComponentsInChildren<global::TriggerSegment>( true, true )
+			: Scene.GetAllComponents<global::TriggerSegment>();
+		var segmentList = segments.ToList();
+		var configuredFinalSegment = segmentList.FirstOrDefault( segment => segment.FinalSegment );
+
+		if ( configuredFinalSegment.IsValid() )
+			return segmentId == configuredFinalSegment.SegmentId;
+
+		if ( _segmentIds.Count > 0 )
+			return segmentId == _segmentIds[_segmentIds.Count - 1];
+
+		var finalSegmentId = segmentList
+			.Select( segment => segment.SegmentId )
+			.DefaultIfEmpty( segmentId )
+			.Max();
+
+		return segmentId == finalSegmentId;
+	}
 
     public void VoteForMap( string mapName )
     {
@@ -190,7 +252,23 @@ public sealed class GameManager : Component
         _mapVotes[voterId] = mapName;
         RecountMapVotes();
         Log.Info( $"Vote accepted from {GetVoterLogName( voterId, voterName )}: {mapName}. {MapVoteChoices[0]}={LestoriaVotes}, {MapVoteChoices[1]}={SnowballVotes}" );
+
+		if ( HaveAllPlayersVoted() )
+		{
+			var playerCount = Connection.All.Count();
+			Log.Info( $"All players voted ({_mapVotes.Count}/{playerCount}), finishing map vote early" );
+			FinishMapVote();
+		}
     }
+
+	private bool HaveAllPlayersVoted()
+	{
+		if ( !Networking.IsHost )
+			return false;
+
+		var playerCount = Connection.All.Count();
+		return playerCount > 0 && _mapVotes.Count >= playerCount;
+	}
 
     private static string GetLocalVoterId()
     {
@@ -237,7 +315,20 @@ public sealed class GameManager : Component
         CloseMapVote();
         SetupRace();
         RespawnAllMelons();
+		PlayLevelStartSound( MapInstance.MapName );
     }
+
+	[Rpc.Broadcast( NetFlags.Reliable | NetFlags.HostOnly )]
+	private void PlayLevelStartSound( string mapName )
+	{
+		if ( LevelStartSound is null || !MapInstance.IsValid() || !MapInstance.IsLoaded )
+			return;
+
+		if ( MapInstance.MapName != mapName )
+			return;
+
+		Sound.Play( LevelStartSound );
+	}
 
     private void HandleMapUnloaded()
     {
@@ -277,6 +368,9 @@ public sealed class GameManager : Component
 
     private void FinishMapVote()
     {
+		if ( !Networking.IsHost || !IsMapVoteOpen )
+			return;
+
         var selectedMap = LestoriaVotes >= SnowballVotes
             ? MapVoteChoices[0]
             : MapVoteChoices[1];
@@ -292,14 +386,8 @@ public sealed class GameManager : Component
             return;
 
         ActiveMapName = mapName;
-
-        if ( MapInstance.MapName == mapName )
-        {
-            StartRoundFromLoadedMap();
-            return;
-        }
-
-        MapInstance.MapName = mapName;
+		ActiveMapRevision++;
+		BeginMapChange( mapName, ActiveMapRevision );
     }
 
     private void ApplyActiveMap()
@@ -307,11 +395,42 @@ public sealed class GameManager : Component
         if ( !MapInstance.IsValid() || string.IsNullOrWhiteSpace( ActiveMapName ) )
             return;
 
-        if ( MapInstance.MapName == ActiveMapName )
+		if ( !string.IsNullOrWhiteSpace( _pendingMapName ) )
+			return;
+
+        if ( _appliedMapRevision == ActiveMapRevision && MapInstance.MapName == ActiveMapName )
             return;
 
-        MapInstance.MapName = ActiveMapName;
+		BeginMapChange( ActiveMapName, ActiveMapRevision );
     }
+
+	private void BeginMapChange( string mapName, int revision )
+	{
+		if ( MapInstance.MapName == mapName && MapInstance.IsLoaded )
+		{
+			_pendingMapName = mapName;
+			_pendingMapRevision = revision;
+			MapInstance.MapName = string.Empty;
+			return;
+		}
+
+		MapInstance.MapName = mapName;
+		_appliedMapRevision = revision;
+	}
+
+	private void ApplyPendingMapChange()
+	{
+		if ( !MapInstance.IsValid() || string.IsNullOrWhiteSpace( _pendingMapName ) )
+			return;
+
+		if ( MapInstance.IsLoaded )
+			return;
+
+		MapInstance.MapName = _pendingMapName;
+		_appliedMapRevision = _pendingMapRevision;
+		_pendingMapName = null;
+		_pendingMapRevision = 0;
+	}
 
     private void CloseMapVote()
     {
@@ -388,20 +507,41 @@ public sealed class GameManager : Component
         if ( !spawn.IsValid() )
             return;
 
+		var spawnPosition = GetAvailableSpawnPosition( spawn.WorldPosition, melon );
+
         var owner = melon.GameObject.Network.Owner;
         if ( owner != null && owner.IsActive )
         {
             using ( Rpc.FilterInclude( owner ) )
             {
-                RespawnLocalMelon( spawn.WorldPosition, spawn.WorldRotation );
+				RespawnLocalMelon( spawnPosition, spawn.WorldRotation );
             }
 
+            melon.CompleteDeath();
             return;
         }
 
         if ( !melon.IsProxy )
-            melon.RespawnAt( spawn.WorldPosition, spawn.WorldRotation );
+			melon.RespawnAt( spawnPosition, spawn.WorldRotation );
+
+        melon.CompleteDeath();
     }
+
+	private Vector3 GetAvailableSpawnPosition( Vector3 position, Melon spawningMelon )
+	{
+		var searchSphere = new Sphere( position, SpawnOverlapRadius );
+
+		foreach ( var item in Scene.FindInPhysics( searchSphere ) )
+		{
+			var otherMelon = item.Components.Get<Melon>( FindMode.EverythingInSelfAndAncestors );
+			if ( !otherMelon.IsValid() || otherMelon == spawningMelon )
+				continue;
+
+			return position + Vector3.Up * SpawnOverlapHeight;
+		}
+
+		return position;
+	}
 
     [Rpc.Broadcast]
     private void RespawnLocalMelon( Vector3 position, Rotation rotation )

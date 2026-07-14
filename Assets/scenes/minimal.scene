@@ -60,6 +60,9 @@
           "__guid": "985e1fe2-4479-4dfb-8cb1-b33836375f20",
           "__enabled": true,
           "Flags": 0,
+          "ActiveSegmentSound": "sounds/segment.sound",
+          "FinalSegmentSound": "sounds/segment_final.sound",
+          "LevelStartSound": "sounds/start.sound",
           "MapInstance": {
             "_type": "component",
             "component_id": "e403c0dc-c69e-45fa-82c1-d8e9a241d3dd",
@@ -167,6 +170,30 @@
         {
           "__type": "Sandbox.VoteMapPanel",
           "__guid": "de672670-f43a-4e67-9ade-54eff5b85a2d",
+          "__enabled": true,
+          "Flags": 0,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        },
+        {
+          "__type": "Sandbox.ScoreboardPanel",
+          "__guid": "d0dae947-dd99-458d-9bc4-898589542c59",
+          "__enabled": true,
+          "Flags": 0,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        },
+        {
+          "__type": "Sandbox.MapLoadingPanel",
+          "__guid": "e7920f85-ae16-41ca-bcb2-03b7812c0638",
           "__enabled": true,
           "Flags": 0,
           "OnComponentDestroy": null,

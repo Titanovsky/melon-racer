@@ -1,0 +1,33 @@
+MapLoadingPanel
+{
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	display: none;
+	justify-content: center;
+	align-items: center;
+	font-family: Poppins;
+	pointer-events: none;
+	z-index: 10000;
+
+	&.loading
+	{
+		display: flex;
+		background-color: #000;
+	}
+
+	&.loaded
+	{
+		display: none;
+	}
+
+	.loading-title
+	{
+		color: #fff;
+		font-family: Poppins;
+		font-size: 46px;
+		font-weight: 900;
+	}
+}

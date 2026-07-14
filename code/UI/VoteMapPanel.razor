@@ -9,8 +9,10 @@
 	@if ( IsOpen )
 	{
 		<div class="vote-panel">
-			<div class="title">VOTE MAP</div>
-			<div class="timer">@VoteSecondsLeft</div>
+			<div class="header">
+				<div class="title">VOTE MAP</div>
+				<div class="timer">@VoteSecondsLeft</div>
+			</div>
 
 			@if ( HasVoted )
 			{
@@ -47,7 +49,7 @@
 
 	protected override void OnUpdate()
 	{
-		Mouse.Visible = IsOpen;
+		Mouse.Visibility = IsOpen ? MouseVisibility.Visible : MouseVisibility.Hidden;
 	}
 
 	private void VoteForFirstMap()

@@ -31,9 +31,17 @@ VoteMapPanel
 		gap: 18px;
 		align-items: stretch;
 		background-color: rgba( 18, 18, 18, 0.78 );
-		border: 2px solid rgba( 255, 255, 255, 0.18 );
+		border: 0;
 		border-radius: 8px;
 		pointer-events: all;
+	}
+
+	.header
+	{
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+		gap: 16px;
 	}
 
 	.title
@@ -48,11 +56,10 @@ VoteMapPanel
 
 	.timer
 	{
-		font-size: 44px;
-		line-height: 48px;
+		font-size: 34px;
+		line-height: 38px;
 		font-weight: 900;
 		color: #9fff6b;
-		text-align: center;
 		text-shadow: 2px 2px 2px rgba( 0, 0, 0, 0.8 );
 	}
 
@@ -98,7 +105,7 @@ VoteMapPanel
 		justify-content: space-between;
 		align-items: center;
 		background-color: rgba( 255, 255, 255, 0.12 );
-		border: 1px solid rgba( 255, 255, 255, 0.28 );
+		border: 0;
 		border-radius: 6px;
 		color: white;
 		pointer-events: all;

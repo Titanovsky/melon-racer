@@ -1,0 +1,19 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Ambi.MelonRacer;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root class="@(IsMapLoading ? "loading" : "loaded")">
+    <div class="loading-title">Map Loading...</div>
+</root>
+
+@code
+{
+	private GameManager Manager => GameManager.Instance;
+
+	private bool IsMapLoading => Manager?.MapInstance.IsValid() != true
+		|| !Manager.MapInstance.IsLoaded;
+
+	protected override int BuildHash() => System.HashCode.Combine( IsMapLoading );
+}

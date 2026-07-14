@@ -14,23 +14,31 @@ public sealed class Melon : Component, Component.ICollisionListener
 
     [Property, Group( "Movement" )] public float Speed { get; set; } = 500f;
 	[Property, Group( "Movement" )] public float Inertia { get; set; } = 3f;
+	[Property, Group( "Movement" )] public float BrakeDeceleration { get; set; } = 1800f;
+	[Property, Group( "Movement" )] public float SpawnVelocity { get; set; } = 100f;
 
 	[Property, Group( "Jump" )] public float JumpForce { get; set; } = 400f;
 	[Property, Group( "Jump" )] public float JumpDelay { get; set; } = 0.5f;
 
+	[Property, Group( "Boost" )] public float BoostSpeed { get; set; } = 500f;
+	[Property, Group( "Boost" )] public float BoostCooldown { get; set; } = 1.5f;
+	[Property, Group( "Boost" )] public float BoostFadeDuration { get; set; } = 0.35f;
+
 	[Property, Group( "Smash" )] public float SmashSpeed { get; set; } = 700f;
 	[Property, Group( "Smash" )] public float SmashCooldown { get; set; } = 1f;
 
+	[Property, Group( "Death" )] public float RespawnDelay { get; set; } = 3f;
+	[Property, Group( "Death" )] public GameObject DeathEffectPrefab { get; set; }
+	[Property, Group( "Death" )] public GameObject DeathBurstEffectPrefab { get; set; }
+	[Property, Group( "Death" )] public SoundEvent DeathSound { get; set; }
+	[Property, Group( "Spawn" )] public float SpawnInvulnerabilityDuration { get; set; } = 3f;
+
 	[Property, Group( "Camera" )] public bool EnableCameraSystem { get; set; } = true;
 	[Property, Group( "Camera" )] public float CameraSensitivity { get; set; } = 0.15f;
-	[Property, Group( "Camera" )] public float ZoomMin { get; set; } = 0f;
-	[Property, Group( "Camera" )] public float ZoomMax { get; set; } = 250f;
-	[Property, Group( "Camera" )] public float ZoomSpeed { get; set; } = 200f;
 	[Property, Group( "Camera" )] public float DefaultZoom { get; set; } = 100f;
 	[Property, Group( "Camera" )] public float CameraPitchMin { get; set; } = -30f;
 	[Property, Group( "Camera" )] public float CameraPitchMax { get; set; } = 80f;
 	[Property, Group( "Camera" )] public float CameraPivotHeight { get; set; } = 12f;
-	[Property, Group( "Camera" )] public float CameraCollisionRadius { get; set; } = 8f;
 	[Property, Group( "Camera" )] public float CameraCollisionPadding { get; set; } = 2f;
 	[Property, Group( "Camera" )] public float CameraDriftCorrection { get; set; } = 3f;
 	[Property, Group( "Camera" )] public float CameraVerticalDeadZone { get; set; } = 4f;
@@ -46,15 +54,23 @@ public sealed class Melon : Component, Component.ICollisionListener
 	[Sync( SyncFlags.FromHost )] public float LastLapTime { get; private set; }
 	[Sync( SyncFlags.FromHost )] public float BestLapTime { get; private set; }
 	[Sync( SyncFlags.FromHost )] public bool HasFinishedRace { get; private set; }
+	[Sync( SyncFlags.FromHost )] public bool IsDead { get; private set; }
 
 	private TimeUntil _jumpReady;
+	private TimeUntil _boostReady;
 	private TimeUntil _smashReady;
+	private TimeUntil _respawnTimer;
+	private TimeUntil _spawnInvulnerability;
 	private Vector3 _worldHudOffset;
 	private Vector3 _hudPosition;
 	private Vector3 _moveDirection;
+	private Vector3 _boostDirection;
+	private float _boostSpeedRemaining;
+	private float _boostFadeRate;
 	private float _zoomDistance;
 	private Vector3 _focusPosition;
 	private bool _ignoreJumpVertical;
+	private bool _presentedDeathState;
 	private float _cameraYaw;
 	private float _cameraPitch = 25f;
 
@@ -97,37 +113,20 @@ public sealed class Melon : Component, Component.ICollisionListener
 			_cameraPitch = ( _cameraPitch + look.pitch * sensitivity ).Clamp( CameraPitchMin, CameraPitchMax );
 		}
 
-		if ( Input.Down( "Run" ) )
-			_zoomDistance = MathF.Min( ZoomMax, _zoomDistance + ZoomSpeed * Time.Delta );
-		else if ( Input.Down( "Duck" ) )
-			_zoomDistance = MathF.Max( ZoomMin, _zoomDistance - ZoomSpeed * Time.Delta );
-
 		UpdateFocusPosition();
 
 		var eyeRotation = Rotation.From( _cameraPitch, _cameraYaw, 0f );
 		var cameraPivot = _focusPosition + Vector3.Up * MathF.Max( 0f, CameraPivotHeight );
 		var targetPosition = cameraPivot - eyeRotation.Forward * _zoomDistance;
-		var collisionRadius = MathF.Max( 0.5f, CameraCollisionRadius );
 		var collisionPadding = MathF.Max( 0f, CameraCollisionPadding );
 
 		var trace = Scene.Trace
-			.Sphere( collisionRadius, cameraPivot, targetPosition )
+			.Ray( cameraPivot, targetPosition )
 			.IgnoreGameObjectHierarchy( GameObject )
 			.Run();
 
-		if ( trace.StartedSolid )
-		{
-			camera.WorldPosition = cameraPivot + Vector3.Up * (collisionRadius + collisionPadding);
-		}
-		else if ( trace.Hit )
-		{
-			camera.WorldPosition = trace.EndPosition + trace.Normal * collisionPadding;
-		}
-		else
-		{
-			camera.WorldPosition = targetPosition;
-		}
-
+		camera.WorldPosition = trace.EndPosition
+			+ (trace.Hit ? trace.Normal * collisionPadding : Vector3.Zero);
 		camera.WorldRotation = eyeRotation;
 	}
 
@@ -173,10 +172,128 @@ public sealed class Melon : Component, Component.ICollisionListener
 		_focusPosition = _focusPosition.WithZ( _focusPosition.z + (verticalTarget - _focusPosition.z) * verticalLerp );
 	}
 
+	private void UpdateBoostFade()
+	{
+		if ( _boostSpeedRemaining <= 0f || !Rigidbody.PhysicsBody.IsValid() )
+			return;
+
+		var body = Rigidbody.PhysicsBody;
+		var speedAlongBoost = MathF.Max( 0f, Vector3.Dot( body.Velocity.WithZ( 0f ), _boostDirection ) );
+		var speedToRemove = MathF.Min( _boostSpeedRemaining, _boostFadeRate * Time.Delta );
+		speedToRemove = MathF.Min( speedToRemove, speedAlongBoost );
+
+		if ( speedToRemove <= 0f )
+		{
+			_boostSpeedRemaining = 0f;
+			return;
+		}
+
+		body.Velocity -= _boostDirection * speedToRemove;
+		_boostSpeedRemaining -= speedToRemove;
+	}
+
+	private void TryBoost( Vector3 wishDirection )
+	{
+		if ( !Input.Pressed( "Run" ) || !_boostReady || _boostSpeedRemaining > 0f )
+			return;
+
+		if ( !Rigidbody.PhysicsBody.IsValid() )
+			return;
+
+		var direction = wishDirection;
+		if ( direction.IsNearZeroLength )
+			direction = Rigidbody.PhysicsBody.Velocity.WithZ( 0f ).Normal;
+
+		if ( direction.IsNearZeroLength )
+			direction = (Rotation.FromYaw( _cameraYaw ) * Vector3.Forward).WithZ( 0f ).Normal;
+
+		var boostSpeed = MathF.Max( 0f, BoostSpeed );
+		if ( boostSpeed <= 0f || direction.IsNearZeroLength )
+			return;
+
+		_boostDirection = direction;
+		_boostSpeedRemaining = boostSpeed;
+		_boostFadeRate = boostSpeed / MathF.Max( 0.05f, BoostFadeDuration );
+		_boostReady = MathF.Max( 0f, BoostCooldown );
+
+		Rigidbody.ApplyImpulse( direction * boostSpeed * Rigidbody.PhysicsBody.Mass );
+	}
+
+	private void ApplyBrake()
+	{
+		if ( !Rigidbody.PhysicsBody.IsValid() )
+			return;
+
+		_moveDirection = Vector3.Zero;
+
+		var body = Rigidbody.PhysicsBody;
+		var deceleration = MathF.Max( 0f, BrakeDeceleration );
+		var horizontalVelocity = body.Velocity.WithZ( 0f );
+		var speedToRemove = MathF.Min( horizontalVelocity.Length, deceleration * Time.Delta );
+
+		if ( speedToRemove > 0f )
+			body.Velocity -= horizontalVelocity.Normal * speedToRemove;
+
+		var radius = Collider.IsValid() ? MathF.Max( 1f, Collider.Radius ) : 8f;
+		var angularSpeed = body.AngularVelocity.Length;
+		var angularToRemove = MathF.Min( angularSpeed, deceleration / radius * Time.Delta );
+
+		if ( angularToRemove > 0f )
+			body.AngularVelocity -= body.AngularVelocity.Normal * angularToRemove;
+	}
+
+	private void StopMovement()
+	{
+		_moveDirection = Vector3.Zero;
+		_boostDirection = Vector3.Zero;
+		_boostSpeedRemaining = 0f;
+		_boostFadeRate = 0f;
+
+		if ( !Rigidbody.IsValid() )
+			return;
+
+		Rigidbody.ClearForces();
+
+		if ( !Rigidbody.PhysicsBody.IsValid() )
+			return;
+
+		Rigidbody.PhysicsBody.Velocity = Vector3.Zero;
+		Rigidbody.PhysicsBody.AngularVelocity = Vector3.Zero;
+		Rigidbody.PhysicsBody.ClearForces();
+		Rigidbody.PhysicsBody.ClearTorque();
+	}
+
+	private void UpdateDeathPresentation()
+	{
+		if ( _presentedDeathState == IsDead )
+			return;
+
+		_presentedDeathState = IsDead;
+
+		if ( Renderer.IsValid() )
+			Renderer.Enabled = !IsDead;
+
+		if ( Collider.IsValid() )
+			Collider.Enabled = !IsDead;
+
+		if ( WorldHud.IsValid() )
+			WorldHud.GameObject.Enabled = !IsDead;
+
+		if ( IsDead && !IsProxy )
+			StopMovement();
+	}
+
 	protected override void OnStart()
 	{
-		if (!IsProxy)
+		if ( !IsProxy )
+		{
 			Local = this;
+
+			if ( Networking.IsHost )
+				GameManager.Instance?.RegisterMelon( this );
+			else
+				RequestInitialSpawn();
+		}
 
 		if ( WorldHud.IsValid() )
 		{
@@ -188,14 +305,44 @@ public sealed class Melon : Component, Component.ICollisionListener
         _zoomDistance = DefaultZoom;
 		_focusPosition = WorldPosition;
 
-		if ( Networking.IsHost )
-			GameManager.Instance?.RegisterMelon( this );
     }
+
+	[Rpc.Host( NetFlags.OwnerOnly | NetFlags.Reliable )]
+	private void RequestInitialSpawn()
+	{
+		GameManager.Instance?.RegisterMelon( this );
+	}
+
+	public void TouchSegment( int segmentId )
+	{
+		if ( IsProxy )
+			return;
+
+		if ( Networking.IsHost )
+		{
+			GameManager.Instance?.PassSegment( this, segmentId );
+			return;
+		}
+
+		RequestSegmentPass( segmentId );
+	}
+
+	[Rpc.Host( NetFlags.Reliable | NetFlags.SendImmediate )]
+	private void RequestSegmentPass( int segmentId )
+	{
+		GameManager.Instance?.PassSegment( this, segmentId );
+	}
 
     protected override void OnFixedUpdate()
     {
 		if ( IsProxy )
 			return;
+
+		if ( IsDead )
+		{
+			StopMovement();
+			return;
+		}
 
 		if ( GameManager.Instance?.IsMapVoteOpen == true )
 			return;
@@ -203,12 +350,22 @@ public sealed class Melon : Component, Component.ICollisionListener
         if (!Rigidbody.IsValid())
             return;
 
+		UpdateBoostFade();
+
+		if ( Input.Down( "Duck" ) )
+		{
+			ApplyBrake();
+			return;
+		}
+
         var wishDirection = GetWishDirection();
 
         _moveDirection = Vector3.Lerp(_moveDirection, wishDirection, Time.Delta * Inertia); // this is inertia
 
         if (!_moveDirection.IsNearZeroLength)
             Rigidbody.ApplyForce(_moveDirection * Speed * Rigidbody.PhysicsBody.Mass);
+
+		TryBoost( wishDirection );
 
         if (Input.Pressed("Jump") && _jumpReady && IsGrounded())
         {
@@ -226,9 +383,16 @@ public sealed class Melon : Component, Component.ICollisionListener
 
     protected override void OnUpdate()
     {
+		if ( Networking.IsHost && IsDead && _respawnTimer )
+			GameManager.Instance?.RespawnSmashedMelon( this );
+
+		UpdateDeathPresentation();
 		UpdateWorldHud();
 
 		if ( IsProxy )
+			return;
+
+		if ( IsDead )
 			return;
 
 		if ( GameManager.Instance?.IsMapVoteOpen == true )
@@ -267,7 +431,7 @@ public sealed class Melon : Component, Component.ICollisionListener
 
 	void Component.ICollisionListener.OnCollisionStart( Collision collision )
 	{
-		if ( IsProxy || !_smashReady )
+		if ( IsProxy || IsDead || !_smashReady )
 			return;
 
 		var impactSpeed = collision.Contact.Speed.Length;
@@ -276,21 +440,100 @@ public sealed class Melon : Component, Component.ICollisionListener
 
 		_smashReady = SmashCooldown;
 		Log.Info( $"Melon smashed at speed {impactSpeed:0}" );
-		RequestSmash();
+
+		var otherMelon = collision.Other.GameObject.Components.Get<Melon>( FindMode.EverythingInSelfAndAncestors );
+		RequestSmash( otherMelon?.GameObject );
 	}
 
 	[Rpc.Host]
-	private void RequestSmash()
+	private void RequestSmash( GameObject collidedMelon )
 	{
-		GameManager.Instance?.SmashMelon( this );
+		var gameManager = GameManager.Instance;
+		gameManager?.SmashMelon( this );
+
+		if ( !collidedMelon.IsValid() )
+			return;
+
+		var otherMelon = collidedMelon.Components.Get<Melon>();
+		if ( !otherMelon.IsValid() || otherMelon == this )
+			return;
+
+		gameManager?.SmashMelon( otherMelon );
+	}
+
+	public bool BeginDeath()
+	{
+		if ( !Networking.IsHost || IsDead || !_spawnInvulnerability )
+			return false;
+
+		IsDead = true;
+		_respawnTimer = MathF.Max( 0f, RespawnDelay );
+
+		SpawnDeathEffects( WorldPosition );
+		PlayDeathSound( WorldPosition );
+		UpdateDeathPresentation();
+
+		return true;
+	}
+
+	public void CompleteDeath()
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		IsDead = false;
+		_respawnTimer = 0f;
+		StartSpawnInvulnerability();
+		UpdateDeathPresentation();
+	}
+
+	private void SpawnDeathEffects( Vector3 position )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		SpawnDeathEffect( DeathEffectPrefab, position, Rotation.Identity );
+		SpawnDeathEffect( DeathBurstEffectPrefab, position, Rotation.FromYaw( 180f ) );
+	}
+
+	private static void SpawnDeathEffect( GameObject prefab, Vector3 position, Rotation rotation )
+	{
+		if ( !prefab.IsValid() )
+			return;
+
+		var effect = prefab.Clone( new CloneConfig
+		{
+			Transform = new Transform( position, rotation ),
+			StartEnabled = false
+		} );
+
+		if ( !effect.IsValid() )
+			return;
+
+		effect.NetworkMode = NetworkMode.Object;
+		effect.Network.SetOrphanedMode( NetworkOrphaned.Host );
+		effect.NetworkSpawn();
+		effect.Enabled = true;
+	}
+
+	[Rpc.Broadcast( NetFlags.Reliable )]
+	private void PlayDeathSound( Vector3 position )
+	{
+		if ( DeathSound is not null )
+			Sound.Play( DeathSound, position );
 	}
 
 	public void RespawnAt( Vector3 position, Rotation rotation )
 	{
 		GameObject.WorldPosition = position;
 		GameObject.WorldRotation = rotation;
+		StartSpawnInvulnerability();
 
 		_moveDirection = Vector3.Zero;
+		_boostDirection = Vector3.Zero;
+		_boostSpeedRemaining = 0f;
+		_boostFadeRate = 0f;
+		_boostReady = 0f;
 		_zoomDistance = DefaultZoom;
 		_focusPosition = position;
 		_hudPosition = position + _worldHudOffset;
@@ -303,11 +546,16 @@ public sealed class Melon : Component, Component.ICollisionListener
 
 		if ( Rigidbody.PhysicsBody.IsValid() )
 		{
-			Rigidbody.PhysicsBody.Velocity = Vector3.Zero;
+			Rigidbody.PhysicsBody.Velocity = rotation.Forward * MathF.Max( 0f, SpawnVelocity );
 			Rigidbody.PhysicsBody.AngularVelocity = Vector3.Zero;
 			Rigidbody.PhysicsBody.ClearForces();
 			Rigidbody.PhysicsBody.ClearTorque();
 		}
+	}
+
+	private void StartSpawnInvulnerability()
+	{
+		_spawnInvulnerability = MathF.Max( 0f, SpawnInvulnerabilityDuration );
 	}
 
 	public void ResetRaceProgress( int activeSegmentId, float raceElapsed )

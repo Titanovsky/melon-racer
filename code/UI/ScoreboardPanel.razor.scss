@@ -1,0 +1,102 @@
+ScoreboardPanel
+{
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	justify-content: center;
+	align-items: center;
+	font-family: Poppins;
+	pointer-events: none;
+	z-index: 500;
+
+	.scoreboard
+	{
+		width: 780px;
+		max-height: 68%;
+		flex-direction: column;
+		padding: 22px;
+		background-color: rgba( 10, 12, 16, 0.82 );
+		border-radius: 10px;
+	}
+
+	.scoreboard-header
+	{
+		width: 100%;
+		min-height: 42px;
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+	}
+
+	.map-name,
+	.online-count
+	{
+		color: #fff;
+		font-family: Poppins;
+		font-weight: 900;
+	}
+
+	.map-name
+	{
+		font-size: 27px;
+	}
+
+	.online-count
+	{
+		font-size: 21px;
+	}
+
+	.player-list
+	{
+		width: 100%;
+		margin-top: 14px;
+		flex-direction: column;
+		gap: 7px;
+		overflow: scroll;
+	}
+
+	.player-row
+	{
+		width: 100%;
+		min-height: 58px;
+		flex-direction: row;
+		align-items: center;
+		gap: 14px;
+		padding: 7px 12px;
+		background-color: rgba( 255, 255, 255, 0.07 );
+		border-radius: 7px;
+	}
+
+	.avatar
+	{
+		width: 44px;
+		height: 44px;
+		border-radius: 7px;
+		flex-shrink: 0;
+		pointer-events: all;
+	}
+
+	.player-name
+	{
+		min-width: 0;
+		flex-grow: 1;
+		color: #fff;
+		font-size: 20px;
+		font-weight: 700;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.player-ping
+	{
+		width: 90px;
+		flex-shrink: 0;
+		color: rgba( 255, 255, 255, 0.76 );
+		font-size: 18px;
+		font-weight: 700;
+		text-align: right;
+	}
+}
