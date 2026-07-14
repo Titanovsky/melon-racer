@@ -11,16 +11,8 @@ public sealed class GameManager : Component
 	private const float SpawnOverlapRadius = 16f;
 	private const float SpawnOverlapHeight = 10f;
 	private const float MapPrefabSpawnDelay = 0.1f;
-	private const float MapPrefabActivationDelay = 0.05f;
 	private const float MapPrefabRetryDelay = 0.5f;
 	private const int MapPrefabMaxAttempts = 10;
-
-	private enum MapSetupStage
-	{
-		None,
-		SpawnPrefab,
-		ActivatePrefab
-	}
 
     public static readonly string[] MapVoteChoices =
     {
@@ -51,12 +43,13 @@ public sealed class GameManager : Component
     private readonly List<int> _segmentIds = new();
     private readonly Dictionary<string, string> _mapVotes = new();
     private GameObject _spawnedMapObject;
+	private bool _spawnedMapObjectIsLocal;
     private bool _mapEventsHooked;
     private string _spawnedMapPrefabPath;
     private string _pendingMapName;
     private int _pendingMapRevision;
     private int _appliedMapRevision;
-	private MapSetupStage _mapSetupStage;
+	private bool _mapSetupPending;
 	private TimeUntil _mapSetupTimer;
 	private string _mapSetupMapName;
 	private int _mapSetupAttempts;
@@ -67,34 +60,26 @@ public sealed class GameManager : Component
 
     protected override void OnAwake()
     {
-		if ( Instance.IsValid() && Instance != this )
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Replacing stale GameManager.Instance '{Instance.GameObject.Name}' with '{GameObject.Name}'" );
-
 		Instance = this;
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] GameManager OnAwake: instance assigned, object='{GameObject.Name}', networkMode={GameObject.NetworkMode}, networkRoot={GameObject.IsNetworkRoot}" );
     }
 
     protected override void OnDestroy()
     {
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] GameManager OnDestroy: unhooking map events and resetting runtime state" );
         UnhookMapEvents();
 		ResetMapSetup();
 		_mapVotes.Clear();
 		_segmentIds.Clear();
 		CurrentMapInfo = null;
 		_spawnedMapObject = null;
+		_spawnedMapObjectIsLocal = false;
 		_spawnedMapPrefabPath = null;
 
 		if ( Instance == this )
-		{
 			Instance = null;
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] GameManager.Instance reset" );
-		}
     }
 
     protected override void OnStart()
     {
-		LogMapState( "GameManager OnStart" );
         HookMapEvents();
 
         if ( Networking.IsHost )
@@ -134,13 +119,8 @@ public sealed class GameManager : Component
         if ( !Networking.IsHost || !melon.IsValid() )
             return;
 
-		Log.Info( $"[MelonSpawn][HOST] RegisterMelon: object='{melon.GameObject.Name}', networkMode={melon.GameObject.NetworkMode}, networkRoot={melon.GameObject.IsNetworkRoot}, owner='{melon.GameObject.Network.Owner?.Name ?? "none"}', ownerActive={melon.GameObject.Network.Owner?.IsActive ?? false}, proxy={melon.IsProxy}, enabled={melon.GameObject.Enabled}, active={melon.GameObject.Active}" );
-
 		if ( !CurrentMapInfo.IsValid() )
-		{
-			Log.Info( $"[MelonSpawn][HOST] RegisterMelon deferred for '{melon.GameObject.Name}': MapInfo is not ready for map '{GetMapLabel()}'" );
 			return;
-		}
 
         if ( _segmentIds.Count == 0 )
             SetupRace();
@@ -343,7 +323,6 @@ public sealed class GameManager : Component
 
         RaceTimer = 0f;
         IsRaceActive = true;
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] Race setup complete: map='{GetMapLabel()}', mapInfo='{CurrentMapInfo?.GameObject?.Name ?? "none"}', header='{CurrentMapInfo?.Header ?? "none"}', laps={TotalLaps}, segments=[{string.Join( ",", _segmentIds )}], configuredSpawns={CurrentMapInfo?.SpawnsMelons?.Count ?? 0}" );
     }
 
     private void StartRoundFromLoadedMap()
@@ -371,29 +350,19 @@ public sealed class GameManager : Component
 
     private void HandleMapUnloaded()
     {
-		LogMapState( "OnMapUnloaded callback" );
 		ResetMapSetup();
 
-		if ( Networking.IsHost )
+		if ( Networking.IsHost || _spawnedMapObjectIsLocal )
 		{
 			if ( CurrentMapInfo.IsValid() )
-			{
-				Log.Info( $"[MapLifecycle][HOST] Destroying networked MapInfo object '{CurrentMapInfo.GameObject.Name}' from prefab '{_spawnedMapPrefabPath ?? "none"}'" );
 				CurrentMapInfo.GameObject.Destroy();
-			}
 			else if ( _spawnedMapObject.IsValid() )
-			{
-				Log.Info( $"[MapLifecycle][HOST] Destroying networked map root '{_spawnedMapObject.Name}' without a valid MapInfo" );
 				_spawnedMapObject.Destroy();
-			}
-		}
-		else if ( _spawnedMapObject.IsValid() )
-		{
-			Log.Info( $"[MapLifecycle][CLIENT] Releasing local reference to networked map root '{_spawnedMapObject.Name}'; destruction is controlled by Host" );
 		}
 
         CurrentMapInfo = null;
         _spawnedMapObject = null;
+		_spawnedMapObjectIsLocal = false;
         _spawnedMapPrefabPath = null;
         _segmentIds.Clear();
 
@@ -504,97 +473,62 @@ public sealed class GameManager : Component
 
     private bool SpawnMapInfoPrefab()
     {
-		if ( !Networking.IsHost )
-		{
-			Log.Info( $"[MapLifecycle][CLIENT] Local prefab clone blocked: map prefabs are created and network-spawned by Host" );
-			return false;
-		}
-
-		var fullMapName = MapInstance.IsValid() ? MapInstance.MapName : string.Empty;
         var prefabName = GetFormattedMapName();
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] Selecting map prefab: map='{fullMapName}' ({prefabName}), attempt={_mapSetupAttempts}/{MapPrefabMaxAttempts}" );
-
         if ( string.IsNullOrWhiteSpace( prefabName ) )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Prefab selection failed: formatted map name is empty for '{fullMapName}'" );
 			return false;
-		}
 
         var prefabPath = $"prefabs/{prefabName}.prefab";
         if ( _spawnedMapObject.IsValid() && _spawnedMapPrefabPath == prefabPath )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Reusing existing prefab '{prefabPath}': root='{_spawnedMapObject.Name}', enabled={_spawnedMapObject.Enabled}, active={_spawnedMapObject.Active}, networkMode={_spawnedMapObject.NetworkMode}, networkRoot={_spawnedMapObject.IsNetworkRoot}" );
-			LogMapPrefabState( "Existing prefab state" );
 			return CurrentMapInfo.IsValid();
+
+		var existingMapInfo = Scene.GetAllComponents<global::MapInfo>().FirstOrDefault( candidate =>
+			candidate.IsValid()
+			&& string.Equals( candidate.Header, prefabName, StringComparison.OrdinalIgnoreCase ) );
+
+		if ( existingMapInfo.IsValid() )
+		{
+			_spawnedMapObject = existingMapInfo.GameObject;
+			_spawnedMapObjectIsLocal = false;
+			_spawnedMapPrefabPath = prefabPath;
+			CurrentMapInfo = existingMapInfo;
+			return true;
 		}
 
         var prefab = GameObject.GetPrefab( prefabPath );
         if ( !prefab.IsValid() )
         {
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Prefab resource NOT FOUND: map='{fullMapName}' ({prefabName}), requested='{prefabPath}'" );
+			Log.Warning( $"MapInfo prefab not found: {prefabPath}" );
 			return false;
         }
-
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] Prefab resource found: requested='{prefabPath}', resourceRoot='{prefab.Name}', enabled={prefab.Enabled}, active={prefab.Active}, networkMode={prefab.NetworkMode}, networkRoot={prefab.IsNetworkRoot}, children={prefab.Children.Count}" );
 
         if ( _spawnedMapObject.IsValid() )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Destroying previous spawned prefab root '{_spawnedMapObject.Name}' ({_spawnedMapPrefabPath ?? "unknown"})" );
             _spawnedMapObject.Destroy();
-		}
 
-        _spawnedMapObject = prefab.Clone( new CloneConfig
-		{
-			StartEnabled = false
-		} );
+		_spawnedMapObject = GameObject.Clone( prefabPath );
         if ( !_spawnedMapObject.IsValid() )
         {
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Prefab clone FAILED: '{prefabPath}'" );
+			Log.Warning( $"Failed to create MapInfo prefab: {prefabPath}" );
 			return false;
         }
 
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] Prefab clone created DISABLED: root='{_spawnedMapObject.Name}', enabled={_spawnedMapObject.Enabled}, active={_spawnedMapObject.Active}, networkMode={_spawnedMapObject.NetworkMode}, networkRoot={_spawnedMapObject.IsNetworkRoot}, owner='{_spawnedMapObject.Network.Owner?.Name ?? "none"}'" );
+		_spawnedMapObjectIsLocal = !Networking.IsHost;
+		if ( Networking.IsHost )
+			_spawnedMapObject.NetworkSpawn();
 
         _spawnedMapPrefabPath = prefabPath;
 
         CurrentMapInfo = _spawnedMapObject.GetComponentInChildren<MapInfo>( true, true );
 		if ( !CurrentMapInfo.IsValid() )
 		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Prefab clone rejected: MapInfo component not found in '{prefabPath}'" );
 			_spawnedMapObject.Destroy();
 			_spawnedMapObject = null;
+			_spawnedMapObjectIsLocal = false;
 			_spawnedMapPrefabPath = null;
 			return false;
 		}
 
-		LogMapPrefabState( "Prefab cloned, waiting for activation" );
 		return true;
     }
-
-	private bool FindNetworkedMapInfoPrefab()
-	{
-		var prefabName = GetFormattedMapName();
-		var prefabPath = $"prefabs/{prefabName}.prefab";
-		var candidates = Scene.GetAllComponents<global::MapInfo>()
-			.Where( mapInfo => mapInfo.IsValid() )
-			.ToList();
-		var mapInfo = candidates.FirstOrDefault( candidate =>
-			candidate.GameObject.IsNetworkRoot
-			&& string.Equals( candidate.Header, prefabName, StringComparison.OrdinalIgnoreCase ) );
-
-		if ( !mapInfo.IsValid() )
-		{
-			var candidateNames = string.Join( ", ", candidates.Select( candidate => $"{candidate.GameObject.Name}[header={candidate.Header},networkRoot={candidate.GameObject.IsNetworkRoot},mode={candidate.GameObject.NetworkMode}]" ) );
-			Log.Info( $"[MapLifecycle][CLIENT] Waiting for Host network prefab: map='{GetMapLabel()}', expected='{prefabPath}', candidates=[{candidateNames}]" );
-			return false;
-		}
-
-		_spawnedMapObject = mapInfo.GameObject;
-		_spawnedMapPrefabPath = prefabPath;
-		CurrentMapInfo = mapInfo;
-		LogMapPrefabState( "Network-spawned prefab received from Host" );
-		return true;
-	}
 
     private void RespawnAllMelons()
     {
@@ -612,13 +546,9 @@ public sealed class GameManager : Component
     {
         var spawn = GetRandomMelonSpawn();
         if ( !spawn.IsValid() )
-		{
-			Log.Info( $"[MelonSpawn][HOST] Respawn aborted for '{melon?.GameObject?.Name ?? "invalid"}': no valid SpawnMelon in map '{GetMapLabel()}'" );
             return;
-		}
 
 		var spawnPosition = GetAvailableSpawnPosition( spawn.WorldPosition, melon );
-		Log.Info( $"[MelonSpawn][HOST] Respawn selected: melon='{melon.GameObject.Name}', owner='{melon.GameObject.Network.Owner?.Name ?? "none"}', spawnObject='{spawn.GameObject.Name}', sourcePosition={spawn.WorldPosition}, finalPosition={spawnPosition}, networkMode={melon.GameObject.NetworkMode}, networkRoot={melon.GameObject.IsNetworkRoot}" );
 
         var owner = melon.GameObject.Network.Owner;
         if ( owner != null && owner.IsActive )
@@ -658,12 +588,7 @@ public sealed class GameManager : Component
     private void RespawnLocalMelon( Vector3 position, Rotation rotation )
     {
         if ( !Melon.Local.IsValid() )
-		{
-			Log.Info( $"[MelonSpawn][{RuntimeSide}] RespawnLocalMelon RPC received at {position}, but Melon.Local is invalid" );
             return;
-		}
-
-		Log.Info( $"[MelonSpawn][{RuntimeSide}] RespawnLocalMelon RPC: object='{Melon.Local.GameObject.Name}', owner='{Melon.Local.GameObject.Network.Owner?.Name ?? "none"}', networkMode={Melon.Local.GameObject.NetworkMode}, networkRoot={Melon.Local.GameObject.IsNetworkRoot}, from={Melon.Local.WorldPosition}, to={position}" );
 
         Melon.Local.RespawnAt( position, rotation );
     }
@@ -700,31 +625,22 @@ public sealed class GameManager : Component
     private void HookMapEvents()
     {
 		if ( _mapEventsHooked )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] MapInstance events already subscribed" );
             return;
-		}
 
 		if ( !MapInstance.IsValid() )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Cannot subscribe MapInstance events: MapInstance is invalid" );
 			return;
-		}
 
         MapInstance.OnMapLoaded += HandleMapLoaded;
         MapInstance.OnMapUnloaded += HandleMapUnloaded;
         _mapEventsHooked = true;
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] Subscribed MapInstance.OnMapLoaded and OnMapUnloaded for '{GetMapLabel()}'" );
     }
 
     private void HandleMapLoaded()
     {
-		LogMapState( "OnMapLoaded callback" );
 		_mapSetupMapName = MapInstance.IsValid() ? MapInstance.MapName : string.Empty;
-		_mapSetupStage = MapSetupStage.SpawnPrefab;
+		_mapSetupPending = true;
 		_mapSetupTimer = MapPrefabSpawnDelay;
 		_mapSetupAttempts = 0;
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] Deferred map setup scheduled in {MapPrefabSpawnDelay:0.00}s for '{GetMapLabel( _mapSetupMapName )}'" );
     }
 
     private void UnhookMapEvents()
@@ -736,11 +652,6 @@ public sealed class GameManager : Component
 		{
 			MapInstance.OnMapLoaded -= HandleMapLoaded;
 			MapInstance.OnMapUnloaded -= HandleMapUnloaded;
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Unsubscribed MapInstance.OnMapLoaded and OnMapUnloaded" );
-		}
-		else
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] MapInstance already invalid during unsubscribe; local subscription flag will still be reset" );
 		}
 
         _mapEventsHooked = false;
@@ -748,163 +659,54 @@ public sealed class GameManager : Component
 
 	private void UpdateMapSetup()
 	{
-		if ( _mapSetupStage == MapSetupStage.None || !_mapSetupTimer )
+		if ( !_mapSetupPending || !_mapSetupTimer )
 			return;
 
 		if ( !MapInstance.IsValid() )
 		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Deferred map setup cancelled: MapInstance is invalid" );
 			ResetMapSetup();
 			return;
 		}
 
 		if ( !MapInstance.IsLoaded )
 		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Deferred map setup waiting: MapInstance is not loaded, map='{GetMapLabel()}'" );
 			_mapSetupTimer = MapPrefabRetryDelay;
 			return;
 		}
 
 		if ( MapInstance.MapName != _mapSetupMapName )
 		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Deferred map setup cancelled: expected='{GetMapLabel( _mapSetupMapName )}', actual='{GetMapLabel()}'" );
 			ResetMapSetup();
 			return;
 		}
 
-		if ( _mapSetupStage == MapSetupStage.SpawnPrefab )
+		_mapSetupAttempts++;
+		var setupSucceeded = SpawnMapInfoPrefab();
+
+		if ( !setupSucceeded )
 		{
-			_mapSetupAttempts++;
-			var setupSucceeded = Networking.IsHost
-				? SpawnMapInfoPrefab()
-				: FindNetworkedMapInfoPrefab();
-
-			if ( !setupSucceeded )
+			if ( _mapSetupAttempts >= MapPrefabMaxAttempts )
 			{
-				if ( _mapSetupAttempts >= MapPrefabMaxAttempts )
-				{
-					Log.Info( $"[MapLifecycle][{RuntimeSide}] Map prefab setup FAILED after {_mapSetupAttempts} attempts for '{GetMapLabel()}'" );
-					ResetMapSetup();
-					return;
-				}
-
-				Log.Info( $"[MapLifecycle][{RuntimeSide}] Map prefab setup retry scheduled in {MapPrefabRetryDelay:0.00}s" );
-				_mapSetupTimer = MapPrefabRetryDelay;
-				return;
-			}
-
-			if ( !Networking.IsHost )
-			{
-				Log.Info( $"[MapLifecycle][CLIENT] Map prefab setup complete from Host network object: '{_spawnedMapPrefabPath}'" );
 				ResetMapSetup();
 				return;
 			}
 
-			_mapSetupStage = MapSetupStage.ActivatePrefab;
-			_mapSetupTimer = MapPrefabActivationDelay;
-			Log.Info( $"[MapLifecycle][HOST] Prefab activation and NetworkSpawn scheduled in {MapPrefabActivationDelay:0.00}s for '{_spawnedMapPrefabPath}'" );
+			_mapSetupTimer = MapPrefabRetryDelay;
 			return;
 		}
 
-		if ( !Networking.IsHost )
-		{
-			Log.Info( $"[MapLifecycle][CLIENT] Invalid Host-only prefab activation stage cancelled" );
-			ResetMapSetup();
-			return;
-		}
-
-		if ( !_spawnedMapObject.IsValid() || !CurrentMapInfo.IsValid() )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] Prefab activation FAILED: rootValid={_spawnedMapObject.IsValid()}, mapInfoValid={CurrentMapInfo.IsValid()}" );
-			ResetMapSetup();
-			return;
-		}
-
-		_spawnedMapObject.Enabled = true;
-		LogMapPrefabState( "Prefab activated locally before NetworkSpawn" );
-		_spawnedMapObject.NetworkSpawn();
-		LogMapPrefabState( "Prefab NetworkSpawn completed" );
 		ResetMapSetup();
 
-		StartRoundFromLoadedMap();
-		LogMelonNetworkObjects( "Round started after prefab NetworkSpawn" );
+		if ( Networking.IsHost )
+			StartRoundFromLoadedMap();
 	}
 
 	private void ResetMapSetup()
 	{
-		_mapSetupStage = MapSetupStage.None;
+		_mapSetupPending = false;
 		_mapSetupTimer = 0f;
 		_mapSetupMapName = null;
 		_mapSetupAttempts = 0;
-	}
-
-	private string RuntimeSide => Networking.IsHost ? "HOST" : "CLIENT";
-
-	private string GetMapLabel()
-	{
-		return GetMapLabel( MapInstance.IsValid() ? MapInstance.MapName : string.Empty );
-	}
-
-	private static string GetMapLabel( string fullMapName )
-	{
-		var shortMapName = GetFormattedMapName( fullMapName );
-		return $"{(string.IsNullOrWhiteSpace( fullMapName ) ? "<empty>" : fullMapName)} ({(string.IsNullOrWhiteSpace( shortMapName ) ? "<empty>" : shortMapName)})";
-	}
-
-	private void LogMapState( string reason )
-	{
-		if ( !MapInstance.IsValid() )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] {reason}: MapInstance INVALID" );
-			return;
-		}
-
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] {reason}: map='{GetMapLabel()}', isLoaded={MapInstance.IsLoaded}, componentEnabled={MapInstance.Enabled}, objectEnabled={MapInstance.GameObject.Enabled}, objectActive={MapInstance.GameObject.Active}, networkMode={MapInstance.GameObject.NetworkMode}, networkRoot={MapInstance.GameObject.IsNetworkRoot}, activeMap='{GetMapLabel( ActiveMapName )}', revision={ActiveMapRevision}" );
-	}
-
-	private void LogMapPrefabState( string reason )
-	{
-		if ( !_spawnedMapObject.IsValid() )
-		{
-			Log.Info( $"[MapLifecycle][{RuntimeSide}] {reason}: spawned prefab root INVALID, selected='{_spawnedMapPrefabPath ?? "none"}'" );
-			return;
-		}
-
-		var objects = EnumerateHierarchy( _spawnedMapObject ).ToList();
-		var segments = _spawnedMapObject.GetComponentsInChildren<global::TriggerSegment>( true, true ).ToList();
-		var meshes = _spawnedMapObject.GetComponentsInChildren<MeshComponent>( true, true ).ToList();
-		var spawns = _spawnedMapObject.GetComponentsInChildren<global::SpawnMelon>( true, true ).ToList();
-		var neverObjects = objects.Count( gameObject => gameObject.NetworkMode == NetworkMode.Never );
-		var networkObjects = objects.Count( gameObject => gameObject.NetworkMode == NetworkMode.Object );
-		var snapshotObjects = objects.Count( gameObject => gameObject.NetworkMode == NetworkMode.Snapshot );
-		var enabledSegments = segments.Count( segment => segment.Enabled );
-		var enabledMeshes = meshes.Count( mesh => mesh.Enabled );
-		var visibleMeshes = meshes.Count( mesh => mesh.Enabled && !mesh.HideInGame );
-		var triggerMeshes = meshes.Count( mesh => mesh.Enabled && mesh.IsTrigger );
-
-		Log.Info( $"[MapLifecycle][{RuntimeSide}] {reason}: map='{GetMapLabel()}', selected='{_spawnedMapPrefabPath ?? "none"}', root='{_spawnedMapObject.Name}', rootEnabled={_spawnedMapObject.Enabled}, rootActive={_spawnedMapObject.Active}, rootNetworkMode={_spawnedMapObject.NetworkMode}, rootNetworkRoot={_spawnedMapObject.IsNetworkRoot}, owner='{_spawnedMapObject.Network.Owner?.Name ?? "none"}', objects={objects.Count} [Never={neverObjects}, Object={networkObjects}, Snapshot={snapshotObjects}], segments={segments.Count}/{enabledSegments} enabled, meshes={meshes.Count}/{enabledMeshes} enabled/{visibleMeshes} visible/{triggerMeshes} triggers, spawns={spawns.Count}, mapInfoValid={CurrentMapInfo.IsValid()}" );
-	}
-
-	private void LogMelonNetworkObjects( string reason )
-	{
-		var melons = Scene.GetAllComponents<Melon>().Where( melon => melon.IsValid() ).ToList();
-		Log.Info( $"[MelonSpawn][{RuntimeSide}] {reason}: found {melons.Count} Melon components" );
-
-		foreach ( var melon in melons )
-		{
-			Log.Info( $"[MelonSpawn][{RuntimeSide}] Network object: name='{melon.GameObject.Name}', enabled={melon.GameObject.Enabled}, active={melon.GameObject.Active}, networkMode={melon.GameObject.NetworkMode}, networkRoot={melon.GameObject.IsNetworkRoot}, owner='{melon.GameObject.Network.Owner?.Name ?? "none"}', ownerActive={melon.GameObject.Network.Owner?.IsActive ?? false}, proxy={melon.IsProxy}, position={melon.WorldPosition}" );
-		}
-	}
-
-	private static IEnumerable<GameObject> EnumerateHierarchy( GameObject root )
-	{
-		yield return root;
-
-		foreach ( var child in root.Children )
-		{
-			foreach ( var descendant in EnumerateHierarchy( child ) )
-				yield return descendant;
-		}
 	}
 
 	private bool TryGetNextSegmentId( int segmentId, out int nextSegmentId )
