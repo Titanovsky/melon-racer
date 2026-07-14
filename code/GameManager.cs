@@ -95,6 +95,7 @@ public sealed class GameManager : Component
     {
 		ApplyPendingMapChange();
 		UpdateMapSetup();
+		DisableDuplicateClientMapPrefabs();
 
         if ( !Networking.IsHost )
         {
@@ -481,17 +482,20 @@ public sealed class GameManager : Component
         if ( _spawnedMapObject.IsValid() && _spawnedMapPrefabPath == prefabPath )
 			return CurrentMapInfo.IsValid();
 
-		var existingMapInfo = Scene.GetAllComponents<global::MapInfo>().FirstOrDefault( candidate =>
-			candidate.IsValid()
-			&& string.Equals( candidate.Header, prefabName, StringComparison.OrdinalIgnoreCase ) );
-
-		if ( existingMapInfo.IsValid() )
+		if ( Networking.IsHost )
 		{
-			_spawnedMapObject = existingMapInfo.GameObject;
-			_spawnedMapObjectIsLocal = false;
-			_spawnedMapPrefabPath = prefabPath;
-			CurrentMapInfo = existingMapInfo;
-			return true;
+			var existingMapInfo = Scene.GetAllComponents<global::MapInfo>().FirstOrDefault( candidate =>
+				candidate.IsValid()
+				&& string.Equals( candidate.Header, prefabName, StringComparison.OrdinalIgnoreCase ) );
+
+			if ( existingMapInfo.IsValid() )
+			{
+				_spawnedMapObject = existingMapInfo.GameObject;
+				_spawnedMapObjectIsLocal = false;
+				_spawnedMapPrefabPath = prefabPath;
+				CurrentMapInfo = existingMapInfo;
+				return true;
+			}
 		}
 
         var prefab = GameObject.GetPrefab( prefabPath );
@@ -529,6 +533,22 @@ public sealed class GameManager : Component
 
 		return true;
     }
+
+	private void DisableDuplicateClientMapPrefabs()
+	{
+		if ( Networking.IsHost || !_spawnedMapObjectIsLocal || !CurrentMapInfo.IsValid() )
+			return;
+
+		foreach ( var mapInfo in Scene.GetAllComponents<global::MapInfo>() )
+		{
+			if ( !mapInfo.IsValid()
+				|| mapInfo == CurrentMapInfo
+				|| !string.Equals( mapInfo.Header, CurrentMapInfo.Header, StringComparison.OrdinalIgnoreCase ) )
+				continue;
+
+			mapInfo.GameObject.Enabled = false;
+		}
+	}
 
     private void RespawnAllMelons()
     {
