@@ -23,7 +23,7 @@
         "BoostCooldown": 1.5,
         "BoostFadeDuration": 1,
         "BoostSpeed": 1200,
-        "BrakeDeceleration": 1800,
+        "BrakeDeceleration": 450,
         "CameraCollisionPadding": 2,
         "CameraDriftCorrection": 3,
         "CameraPitchMax": 80,

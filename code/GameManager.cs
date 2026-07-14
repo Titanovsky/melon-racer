@@ -23,6 +23,7 @@ public sealed class GameManager : Component
     public static GameManager Instance { get; private set; }
 
     [Property] public MapInstance MapInstance { get; set; }
+	[Property, Group( "Maps" )] public float MapInactivityDuration { get; set; } = 300f;
 	[Property, Group( "Sounds" )] public SoundEvent ActiveSegmentSound { get; set; }
 	[Property, Group( "Sounds" )] public SoundEvent FinalSegmentSound { get; set; }
 	[Property, Group( "Sounds" )] public SoundEvent LevelStartSound { get; set; }
@@ -36,6 +37,8 @@ public sealed class GameManager : Component
     [Sync( SyncFlags.FromHost )] public int TotalLaps { get; private set; } = 1;
     [Sync( SyncFlags.FromHost )] public string ActiveMapName { get; private set; }
     [Sync( SyncFlags.FromHost )] public int ActiveMapRevision { get; private set; }
+	[Sync( SyncFlags.FromHost )] public TimeUntil MapInactivityTimer { get; private set; }
+	[Sync( SyncFlags.FromHost )] public bool IsCurrentMapSupported { get; private set; } = true;
 
     public global::MapInfo CurrentMapInfo { get; private set; }
     public IReadOnlyList<int> SegmentIds => _segmentIds;
@@ -53,6 +56,7 @@ public sealed class GameManager : Component
 	private TimeUntil _mapSetupTimer;
 	private string _mapSetupMapName;
 	private int _mapSetupAttempts;
+	private bool _mapPrefabUnavailable;
 
     public float RaceElapsed => IsRaceActive ? MathF.Max( 0f, -(float)RaceTimer ) : 0f;
     public float MapVoteSecondsLeft => IsMapVoteOpen ? MathF.Max( 0f, MapVoteTimer.Relative ) : 0f;
@@ -83,7 +87,10 @@ public sealed class GameManager : Component
         HookMapEvents();
 
         if ( Networking.IsHost )
+		{
             ActiveMapName = MapInstance.IsValid() ? MapInstance.MapName : string.Empty;
+			ResetMapInactivityTimer();
+		}
         else
             ApplyActiveMap();
 
@@ -103,16 +110,16 @@ public sealed class GameManager : Component
             return;
         }
 
-		if ( IsMapVoteOpen && HaveAllPlayersVoted() )
+		if ( IsMapVoteOpen )
 		{
-			FinishMapVote();
+			if ( HaveAllPlayersVoted() || MapVoteTimer )
+				FinishMapVote();
+
 			return;
 		}
 
-        if ( !IsMapVoteOpen || !MapVoteTimer )
-            return;
-
-        FinishMapVote();
+		if ( MapInactivityDuration > 0f && MapInactivityTimer )
+			ChangeToRandomMap();
     }
 
     public void RegisterMelon( Melon melon )
@@ -120,7 +127,7 @@ public sealed class GameManager : Component
         if ( !Networking.IsHost || !melon.IsValid() )
             return;
 
-		if ( !CurrentMapInfo.IsValid() )
+		if ( !CurrentMapInfo.IsValid() && IsCurrentMapSupported )
 			return;
 
         if ( _segmentIds.Count == 0 )
@@ -160,6 +167,8 @@ public sealed class GameManager : Component
 
         if ( segmentId != melon.ActiveSegmentId )
             return;
+
+		ResetMapInactivityTimer();
 
         if ( TryGetNextSegmentId( segmentId, out var nextSegmentId ) )
         {
@@ -334,8 +343,26 @@ public sealed class GameManager : Component
         CloseMapVote();
         SetupRace();
         RespawnAllMelons();
+		ResetMapInactivityTimer();
 		PlayLevelStartSound( MapInstance.MapName );
     }
+
+	private void StartUnsupportedMapRound()
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		CloseMapVote();
+		IsCurrentMapSupported = false;
+		CurrentMapInfo = null;
+		_segmentIds.Clear();
+		_segmentIds.Add( 0 );
+		TotalLaps = 1;
+		RaceTimer = 0f;
+		IsRaceActive = true;
+		RespawnAllMelons();
+		ResetMapInactivityTimer();
+	}
 
 	[Rpc.Broadcast( NetFlags.Reliable | NetFlags.HostOnly )]
 	private void PlayLevelStartSound( string mapName )
@@ -396,6 +423,13 @@ public sealed class GameManager : Component
 		if ( !Networking.IsHost || !IsMapVoteOpen )
 			return;
 
+		if ( _mapVotes.Count == 0 )
+		{
+			CloseMapVote();
+			StartRoundFromLoadedMap();
+			return;
+		}
+
         var selectedMap = LestoriaVotes >= SnowballVotes
             ? MapVoteChoices[0]
             : MapVoteChoices[1];
@@ -414,6 +448,34 @@ public sealed class GameManager : Component
 		ActiveMapRevision++;
 		BeginMapChange( mapName, ActiveMapRevision );
     }
+
+	private void ChangeToRandomMap()
+	{
+		if ( !Networking.IsHost || !MapInstance.IsValid() )
+			return;
+
+		var currentMap = MapInstance.MapName;
+		var choices = MapVoteChoices
+			.Where( mapName => !string.Equals( mapName, currentMap, StringComparison.OrdinalIgnoreCase ) )
+			.ToList();
+
+		if ( choices.Count == 0 )
+			choices.AddRange( MapVoteChoices );
+
+		if ( choices.Count == 0 )
+			return;
+
+		ResetMapInactivityTimer();
+		ChangeMap( Random.Shared.FromList( choices ) );
+	}
+
+	private void ResetMapInactivityTimer()
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		MapInactivityTimer = MathF.Max( 0f, MapInactivityDuration );
+	}
 
     private void ApplyActiveMap()
     {
@@ -501,6 +563,7 @@ public sealed class GameManager : Component
         var prefab = GameObject.GetPrefab( prefabPath );
         if ( !prefab.IsValid() )
         {
+			_mapPrefabUnavailable = true;
 			Log.Warning( $"MapInfo prefab not found: {prefabPath}" );
 			return false;
         }
@@ -613,16 +676,39 @@ public sealed class GameManager : Component
         Melon.Local.RespawnAt( position, rotation );
     }
 
-    private global::SpawnMelon GetRandomMelonSpawn()
+    private GameObject GetRandomMelonSpawn()
     {
-        if ( !CurrentMapInfo.IsValid() )
-            return null;
+		if ( CurrentMapInfo.IsValid() )
+		{
+			var mapSpawns = CurrentMapInfo.SpawnsMelons
+				.Where( spawn => spawn.IsValid() )
+				.Select( spawn => spawn.GameObject )
+				.ToList();
 
-        var spawns = CurrentMapInfo.SpawnsMelons
-            .Where( spawn => spawn.IsValid() )
-            .ToList();
+			if ( mapSpawns.Count > 0 )
+				return Random.Shared.FromList( mapSpawns );
+		}
 
-        return spawns.Count > 0 ? Random.Shared.FromList( spawns ) : null;
+		var sceneSpawns = Scene.GetAllComponents<Sandbox.SpawnPoint>()
+			.Where( spawn => spawn.IsValid() && spawn.GameObject.Enabled )
+			.Select( spawn => spawn.GameObject )
+			.ToList();
+
+		if ( sceneSpawns.Count > 0 )
+			return Random.Shared.FromList( sceneSpawns );
+
+		var networkHelpers = Scene.GetAllComponents<NetworkHelper>()
+			.Where( helper => helper.IsValid() )
+			.ToList();
+		var configuredSpawns = networkHelpers
+			.SelectMany( helper => helper.SpawnPoints ?? new List<GameObject>() )
+			.Where( spawn => spawn.IsValid() && spawn.Enabled )
+			.ToList();
+
+		if ( configuredSpawns.Count > 0 )
+			return Random.Shared.FromList( configuredSpawns );
+
+		return networkHelpers.FirstOrDefault()?.GameObject;
     }
 
     private string GetFormattedMapName()
@@ -661,6 +747,10 @@ public sealed class GameManager : Component
 		_mapSetupPending = true;
 		_mapSetupTimer = MapPrefabSpawnDelay;
 		_mapSetupAttempts = 0;
+		_mapPrefabUnavailable = false;
+
+		if ( Networking.IsHost )
+			IsCurrentMapSupported = true;
     }
 
     private void UnhookMapEvents()
@@ -705,9 +795,13 @@ public sealed class GameManager : Component
 
 		if ( !setupSucceeded )
 		{
-			if ( _mapSetupAttempts >= MapPrefabMaxAttempts )
+			if ( _mapPrefabUnavailable || _mapSetupAttempts >= MapPrefabMaxAttempts )
 			{
 				ResetMapSetup();
+
+				if ( Networking.IsHost )
+					StartUnsupportedMapRound();
+
 				return;
 			}
 
@@ -718,7 +812,10 @@ public sealed class GameManager : Component
 		ResetMapSetup();
 
 		if ( Networking.IsHost )
+		{
+			IsCurrentMapSupported = true;
 			StartRoundFromLoadedMap();
+		}
 	}
 
 	private void ResetMapSetup()
@@ -727,6 +824,7 @@ public sealed class GameManager : Component
 		_mapSetupTimer = 0f;
 		_mapSetupMapName = null;
 		_mapSetupAttempts = 0;
+		_mapPrefabUnavailable = false;
 	}
 
 	private bool TryGetNextSegmentId( int segmentId, out int nextSegmentId )

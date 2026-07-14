@@ -7,6 +7,10 @@
 
 <root>
 	<div class="melon-racer-hud">
+		@if ( Manager?.IsCurrentMapSupported == false )
+		{
+			<div class="unsupported-map">THIS MAP IS NOT SUPPORTED</div>
+		}
 
 		<div class="hud-section stats">
 			@foreach ( var row in RaceRows )
@@ -67,6 +71,7 @@
 			melon?.ActiveSegmentId ?? -1,
 			(int)((melon?.BestLapTime ?? 0f) * 1000f),
 			(int)((melon?.LastLapTime ?? 0f) * 1000f),
-			melon?.HasFinishedRace ?? false );
+			melon?.HasFinishedRace ?? false,
+			Manager?.IsCurrentMapSupported ?? true );
 	}
 }

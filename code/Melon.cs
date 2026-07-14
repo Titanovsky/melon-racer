@@ -14,7 +14,7 @@ public sealed class Melon : Component, Component.ICollisionListener
 
     [Property, Group( "Movement" )] public float Speed { get; set; } = 500f;
 	[Property, Group( "Movement" )] public float Inertia { get; set; } = 3f;
-	[Property, Group( "Movement" )] public float BrakeDeceleration { get; set; } = 1800f;
+	[Property, Group( "Movement" )] public float BrakeDeceleration { get; set; } = 450f;
 	[Property, Group( "Movement" )] public float SpawnVelocity { get; set; } = 100f;
 
 	[Property, Group( "Jump" )] public float JumpForce { get; set; } = 400f;
@@ -224,7 +224,8 @@ public sealed class Melon : Component, Component.ICollisionListener
 		if ( !Rigidbody.PhysicsBody.IsValid() )
 			return;
 
-		_moveDirection = Vector3.Zero;
+		var inputFade = 1f - MathF.Exp( -MathF.Max( 0f, Inertia ) * Time.Delta );
+		_moveDirection = Vector3.Lerp( _moveDirection, Vector3.Zero, inputFade );
 
 		var body = Rigidbody.PhysicsBody;
 		var deceleration = MathF.Max( 0f, BrakeDeceleration );

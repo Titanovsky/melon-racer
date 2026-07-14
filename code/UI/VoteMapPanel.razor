@@ -13,6 +13,7 @@
 				<div class="title">VOTE MAP</div>
 				<div class="timer">@VoteSecondsLeft</div>
 			</div>
+			<div class="current-map">CURRENT MAP: @GetMapTitle( Manager?.MapInstance?.MapName ?? string.Empty )</div>
 
 			@if ( HasVoted )
 			{
@@ -25,13 +26,19 @@
 			{
 				<div class="map-list">
 					<button class="map-button" onclick=@VoteForFirstMap>
-						<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[0] )</div>
-						<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[0] ) VOTES</div>
+						<div class="map-thumbnail"></div>
+						<div class="map-info">
+							<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[0] )</div>
+							<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[0] ) VOTES</div>
+						</div>
 					</button>
 
 					<button class="map-button" onclick=@VoteForSecondMap>
-						<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[1] )</div>
-						<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[1] ) VOTES</div>
+						<div class="map-thumbnail"></div>
+						<div class="map-info">
+							<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[1] )</div>
+							<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[1] ) VOTES</div>
+						</div>
 					</button>
 				</div>
 			}
