@@ -285,9 +285,13 @@ public sealed class Melon : Component, Component.ICollisionListener
 
 	protected override void OnStart()
 	{
+		var runtimeSide = Networking.IsHost ? "HOST" : "CLIENT";
+		Log.Info( $"[MelonSpawn][{runtimeSide}] Melon OnStart: object='{GameObject.Name}', enabled={GameObject.Enabled}, active={GameObject.Active}, networkMode={GameObject.NetworkMode}, networkRoot={GameObject.IsNetworkRoot}, owner='{GameObject.Network.Owner?.Name ?? "none"}', ownerActive={GameObject.Network.Owner?.IsActive ?? false}, proxy={IsProxy}, position={WorldPosition}" );
+
 		if ( !IsProxy )
 		{
 			Local = this;
+			Log.Info( $"[MelonSpawn][{runtimeSide}] Melon.Local assigned to '{GameObject.Name}'" );
 
 			if ( Networking.IsHost )
 				GameManager.Instance?.RegisterMelon( this );
@@ -310,6 +314,7 @@ public sealed class Melon : Component, Component.ICollisionListener
 	[Rpc.Host( NetFlags.OwnerOnly | NetFlags.Reliable )]
 	private void RequestInitialSpawn()
 	{
+		Log.Info( $"[MelonSpawn][HOST] RequestInitialSpawn RPC received: object='{GameObject.Name}', caller='{Rpc.Caller?.Name ?? "none"}', owner='{GameObject.Network.Owner?.Name ?? "none"}', networkMode={GameObject.NetworkMode}, networkRoot={GameObject.IsNetworkRoot}, proxy={IsProxy}" );
 		GameManager.Instance?.RegisterMelon( this );
 	}
 
@@ -377,8 +382,14 @@ public sealed class Melon : Component, Component.ICollisionListener
 
     protected override void OnDestroy()
     {
-		if (Local == this)
+		var runtimeSide = Networking.IsHost ? "HOST" : "CLIENT";
+		Log.Info( $"[MelonSpawn][{runtimeSide}] Melon OnDestroy: object='{GameObject.Name}', wasLocal={Local == this}, owner='{GameObject.Network.Owner?.Name ?? "none"}'" );
+
+		if ( Local == this )
+		{
 			Local = null;
+			Log.Info( $"[MelonSpawn][{runtimeSide}] Melon.Local reset" );
+		}
     }
 
     protected override void OnUpdate()
@@ -525,6 +536,9 @@ public sealed class Melon : Component, Component.ICollisionListener
 
 	public void RespawnAt( Vector3 position, Rotation rotation )
 	{
+		var runtimeSide = Networking.IsHost ? "HOST" : "CLIENT";
+		Log.Info( $"[MelonSpawn][{runtimeSide}] RespawnAt: object='{GameObject.Name}', owner='{GameObject.Network.Owner?.Name ?? "none"}', networkMode={GameObject.NetworkMode}, networkRoot={GameObject.IsNetworkRoot}, from={WorldPosition}, to={position}" );
+
 		GameObject.WorldPosition = position;
 		GameObject.WorldRotation = rotation;
 		StartSpawnInvulnerability();

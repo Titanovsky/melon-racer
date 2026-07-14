@@ -21,7 +21,7 @@
         "__enabled": true,
         "Flags": 0,
         "Header": "melon_lestoria",
-        "Laps": 1,
+        "Laps": 4,
         "OnComponentDestroy": null,
         "OnComponentDisabled": null,
         "OnComponentEnabled": null,
@@ -581,39 +581,6 @@
             "SkyIndirectLighting": true,
             "SkyMaterial": "materials/skybox/skybox_day_01.vmat",
             "Tint": "1,1,1,1"
-          },
-          {
-            "__type": "Sandbox.EnvmapProbe",
-            "__guid": "b83ba0bb-6ab2-4f7c-9429-c616b3e712ff",
-            "__enabled": true,
-            "Flags": 0,
-            "__version": 1,
-            "BakedTexture": "scenes/minimal_scene_data/envmap/bake_f3e304db-baab-4c1a-a4ec-8442585c2d62.vtex",
-            "Bounds": {
-              "Mins": "-5309.35645,-9936.39941,25.3552856",
-              "Maxs": "4830.20068,9062.54492,1071.7854"
-            },
-            "DelayBetweenUpdates": 0.1,
-            "Feathering": 0.02,
-            "FrameInterval": 5,
-            "MaxDistance": 512,
-            "Mode": "Baked",
-            "MultiBounce": false,
-            "OnComponentDestroy": null,
-            "OnComponentDisabled": null,
-            "OnComponentEnabled": null,
-            "OnComponentFixedUpdate": null,
-            "OnComponentStart": null,
-            "OnComponentUpdate": null,
-            "Priority": 0,
-            "Projection": "Sphere",
-            "RenderExcludeTags": "",
-            "Resolution": "Medium",
-            "Texture": "textures/cubemaps/default2.vtex",
-            "TintColor": "1,1,1,1",
-            "UpdateStrategy": "OnEnabled",
-            "ZFar": 4096,
-            "ZNear": 16
           }
         ],
         "Children": []
