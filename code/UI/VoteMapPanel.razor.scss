@@ -23,6 +23,15 @@ VoteMapPanel
 		pointer-events: all;
 	}
 
+	.vote-layout
+	{
+		max-height: 68%;
+		flex-direction: row;
+		align-items: stretch;
+		gap: 8px;
+		pointer-events: all;
+	}
+
 	.vote-panel
 	{
 		width: 880px;
@@ -134,7 +143,13 @@ VoteMapPanel
 		height: 256px;
 		flex-shrink: 0;
 		background-color: rgba( 255, 255, 255, 0.08 );
+		object-fit: cover;
 		pointer-events: none;
+	}
+
+	.map-thumbnail-placeholder
+	{
+		background-color: rgba( 255, 255, 255, 0.08 );
 	}
 
 	.map-info
@@ -168,5 +183,108 @@ VoteMapPanel
 	.map-button:hover
 	{
 		background-color: rgba( 255, 255, 255, 0.24 );
+	}
+
+	.leaderboard-panel
+	{
+		width: 390px;
+		flex-direction: column;
+		padding: 22px;
+		background-color: rgba( 18, 18, 18, 0.78 );
+		border-radius: 8px;
+		pointer-events: all;
+		overflow: hidden;
+	}
+
+	.leaderboard-title
+	{
+		min-height: 42px;
+		justify-content: center;
+		align-items: center;
+		color: #fff;
+		font-size: 27px;
+		font-weight: 900;
+	}
+
+	.leaderboard-list
+	{
+		width: 100%;
+		min-height: 0;
+		flex-grow: 1;
+		margin-top: 14px;
+		flex-direction: column;
+		gap: 7px;
+		overflow: scroll;
+	}
+
+	.leaderboard-row
+	{
+		width: 100%;
+		min-height: 50px;
+		flex-direction: row;
+		align-items: center;
+		gap: 10px;
+		padding: 5px 10px;
+		background-color: rgba( 255, 255, 255, 0.07 );
+		border-radius: 7px;
+		color: #fff;
+	}
+
+	.leaderboard-avatar
+	{
+		width: 40px;
+		height: 40px;
+		flex-shrink: 0;
+		border-radius: 50%;
+	}
+
+	.leaderboard-name
+	{
+		min-width: 0;
+		flex-grow: 1;
+		color: inherit;
+		font-size: 16px;
+		font-weight: 700;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.leaderboard-time
+	{
+		margin-left: 8px;
+		flex-shrink: 0;
+		color: inherit;
+		font-size: 15px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.rank-first
+	{
+		color: #ffd24a;
+	}
+
+	.rank-second
+	{
+		color: #d7dde8;
+	}
+
+	.rank-third
+	{
+		color: #cd8b53;
+	}
+
+	.leaderboard-status
+	{
+		width: 100%;
+		min-height: 50px;
+		justify-content: center;
+		align-items: center;
+		color: rgba( 255, 255, 255, 0.62 );
+		font-size: 15px;
+		font-weight: 800;
+		text-align: center;
 	}
 }

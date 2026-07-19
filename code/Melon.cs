@@ -1,10 +1,19 @@
 using Sandbox;
 using System;
+using Ambi.Utils;
 
 namespace Ambi.MelonRacer;
 
 public sealed class Melon : Component, Component.ICollisionListener
 {
+	private const string MoneySaveFile = "melon_money";
+	// Unlocks and the current selection stay on the owning player's machine.
+	private const string ShopSaveFile = "melon_shop";
+	private const int ShopSaveVersion = 1;
+	private const string DefaultShopSkin = "Default (Gmod)";
+	private const float ShopSkinChangeUpVelocity = 400f;
+	private const float ShopSkinChangeJumpCooldown = 1f;
+
     public static Melon Local { get; private set; }
 
     [Property] public ModelRenderer Renderer { get; set; }
@@ -56,6 +65,10 @@ public sealed class Melon : Component, Component.ICollisionListener
 	[Sync( SyncFlags.FromHost )] public bool HasFinishedRace { get; private set; }
 	[Sync( SyncFlags.FromHost )] public bool IsDead { get; private set; }
 
+	[Sync] public int Coins { get; private set; }
+	[Sync( SyncFlags.FromHost )] public string ShopSkinHeader { get; private set; } = DefaultShopSkin;
+	[Sync( SyncFlags.FromHost )] public int ShopColorIndex { get; private set; }
+
 	private TimeUntil _jumpReady;
 	private TimeUntil _boostReady;
 	private TimeUntil _smashReady;
@@ -73,6 +86,15 @@ public sealed class Melon : Component, Component.ICollisionListener
 	private bool _presentedDeathState;
 	private float _cameraYaw;
 	private float _cameraPitch = 25f;
+	private ShopSaveData _shopData = new();
+	private int _submittedShopMapRevision = int.MinValue;
+	private int _pendingShopMapRevision = int.MinValue;
+	private int _shopAppearanceRequestId;
+	private TimeUntil _shopAppearanceRetry;
+	private TimeUntil _shopSkinChangeJumpReady;
+	private bool _pendingShopSkinChangeJump;
+	private string _presentedShopSkin;
+	private int _presentedShopColor = -1;
 
 	private Vector3 GetWishDirection()
 	{
@@ -88,7 +110,7 @@ public sealed class Melon : Component, Component.ICollisionListener
 
 	private bool IsGrounded()
 	{
-		var radius = Collider.IsValid() ? Collider.Radius : 16f;
+		var radius = GetWorldSphereRadius();
 
 		var trace = Scene.Trace
 			.Sphere( radius * 0.9f, WorldPosition, WorldPosition + Vector3.Down * radius * 0.3f )
@@ -96,6 +118,15 @@ public sealed class Melon : Component, Component.ICollisionListener
 			.Run();
 
 		return trace.Hit;
+	}
+
+	private float GetWorldSphereRadius()
+	{
+		if ( !Collider.IsValid() )
+			return 16f;
+
+		var scale = MathF.Max( MathF.Abs( WorldScale.x ), MathF.Max( MathF.Abs( WorldScale.y ), MathF.Abs( WorldScale.z ) ) );
+		return MathF.Max( 0.01f, Collider.Radius * scale );
 	}
 
 	private void UpdateCamera()
@@ -235,7 +266,7 @@ public sealed class Melon : Component, Component.ICollisionListener
 		if ( speedToRemove > 0f )
 			body.Velocity -= horizontalVelocity.Normal * speedToRemove;
 
-		var radius = Collider.IsValid() ? MathF.Max( 1f, Collider.Radius ) : 8f;
+		var radius = MathF.Max( 1f, GetWorldSphereRadius() );
 		var angularSpeed = body.AngularVelocity.Length;
 		var angularToRemove = MathF.Min( angularSpeed, deceleration / radius * Time.Delta );
 
@@ -290,10 +321,15 @@ public sealed class Melon : Component, Component.ICollisionListener
 		{
 			Local = this;
 
+			LoadMoney();
+			LoadShop();
+
 			if ( Networking.IsHost )
 				GameManager.Instance?.RegisterMelon( this );
 			else
 				RequestInitialSpawn();
+
+			QueueSavedShopAppearance();
 		}
 
 		if ( WorldHud.IsValid() )
@@ -332,6 +368,370 @@ public sealed class Melon : Component, Component.ICollisionListener
 	private void RequestSegmentPass( int segmentId )
 	{
 		GameManager.Instance?.PassSegment( this, segmentId );
+	}
+
+	public void TouchCoin( Coin coin )
+	{
+		if ( IsProxy || !coin.IsValid() )
+			return;
+
+		if ( Networking.IsHost )
+		{
+			GameManager.Instance?.PickupCoin( this, coin );
+			return;
+		}
+
+		RequestCoinPickup( coin.GameObject );
+	}
+
+	[Rpc.Host( NetFlags.Reliable )]
+	private void RequestCoinPickup( GameObject coinObject )
+	{
+		if ( !coinObject.IsValid() )
+			return;
+
+		GameManager.Instance?.PickupCoin( this, coinObject.Components.Get<Coin>() );
+	}
+
+	[Rpc.Owner( NetFlags.HostOnly | NetFlags.Reliable )]
+	public void GrantCoin( GameObject coinObject )
+	{
+		if ( coinObject.IsValid() )
+			coinObject.Components.Get<Coin>()?.PlayTouchSound();
+
+		GrantCoinLocal();
+	}
+
+	public void GrantCoinLocal()
+	{
+		if ( IsProxy )
+			return;
+
+		Coins += 1;
+		SaveMoney();
+	}
+
+	private void LoadMoney()
+	{
+		var version = GameManager.Instance?.MoneyVersion ?? 0;
+		var defaultMoney = GameManager.Instance?.DefaultMoney ?? 0;
+
+		if ( !DataStore.Exists( MoneySaveFile ) )
+		{
+			Coins = defaultMoney;
+			SaveMoney();
+			return;
+		}
+
+		var data = DataStore.Load<MoneySaveData>( MoneySaveFile );
+		if ( data.Version != version )
+		{
+			Log.Info( $"[Melon] Money wipe: save version {data.Version} -> {version}" );
+			Coins = defaultMoney;
+			SaveMoney();
+			return;
+		}
+
+		Coins = data.Money;
+	}
+
+	private void SaveMoney()
+	{
+		DataStore.Save( new MoneySaveData
+		{
+			Version = GameManager.Instance?.MoneyVersion ?? 0,
+			Money = Coins
+		}, MoneySaveFile );
+	}
+
+	private void LoadShop()
+	{
+		_shopData = DataStore.Exists( ShopSaveFile )
+			? DataStore.Load<ShopSaveData>( ShopSaveFile )
+			: new ShopSaveData();
+
+		if ( _shopData.Version != ShopSaveVersion )
+			_shopData = new ShopSaveData { Version = ShopSaveVersion };
+
+		_shopData.OwnedSkins ??= new List<string>();
+		_shopData.OwnedColors ??= new List<int>();
+		var defaultSkinHeader = GameManager.Instance?.DefaultShopSkin?.Header ?? DefaultShopSkin;
+
+		if ( !_shopData.OwnedSkins.Any( skin => string.Equals( skin, defaultSkinHeader, StringComparison.OrdinalIgnoreCase ) ) )
+			_shopData.OwnedSkins.Add( defaultSkinHeader );
+
+		if ( !_shopData.OwnedColors.Contains( 0 ) )
+			_shopData.OwnedColors.Add( 0 );
+
+		if ( string.IsNullOrWhiteSpace( _shopData.SelectedSkin )
+			|| !_shopData.OwnedSkins.Any( skin => string.Equals( skin, _shopData.SelectedSkin, StringComparison.OrdinalIgnoreCase ) ) )
+			_shopData.SelectedSkin = defaultSkinHeader;
+
+		var manager = GameManager.Instance;
+		if ( manager is not null && !manager.IsShopColorIndexValid( _shopData.SelectedColor ) )
+			_shopData.SelectedColor = 0;
+
+		SaveShop();
+	}
+
+	private void SaveShop()
+	{
+		_shopData.Version = ShopSaveVersion;
+		DataStore.Save( _shopData, ShopSaveFile );
+	}
+
+	public bool OwnsShopSkin( string skinHeader )
+	{
+		return _shopData.OwnedSkins?.Any( owned =>
+			string.Equals( owned, skinHeader, StringComparison.OrdinalIgnoreCase ) ) == true;
+	}
+
+	public bool OwnsShopColor( int colorIndex )
+	{
+		return _shopData.OwnedColors?.Contains( colorIndex ) == true;
+	}
+
+	public bool IsShopSkinSelected( string skinHeader )
+	{
+		return string.Equals( _shopData.SelectedSkin, skinHeader, StringComparison.OrdinalIgnoreCase );
+	}
+
+	public bool IsShopColorSelected( int colorIndex )
+	{
+		return _shopData.SelectedColor == colorIndex;
+	}
+
+	public void BuyOrSelectShopSkin( MelonShopConfig skin )
+	{
+		if ( IsProxy || skin is null )
+			return;
+
+		if ( OwnsShopSkin( skin.Header ) )
+		{
+			_shopData.SelectedSkin = skin.Header;
+			SaveShop();
+			QueueSavedShopAppearance( true );
+			return;
+		}
+
+		RequestShopSkinPurchase( this, skin.Header );
+	}
+
+	public void BuyOrSelectShopColor( int colorIndex )
+	{
+		if ( IsProxy || GameManager.Instance?.IsShopColorIndexValid( colorIndex ) != true )
+			return;
+
+		if ( OwnsShopColor( colorIndex ) )
+		{
+			_shopData.SelectedColor = colorIndex;
+			SaveShop();
+			QueueSavedShopAppearance();
+			return;
+		}
+
+		RequestShopColorPurchase( this, colorIndex );
+	}
+
+	private void QueueSavedShopAppearance( bool jumpOnSkinChange = false )
+	{
+		_shopAppearanceRequestId++;
+		_submittedShopMapRevision = int.MinValue;
+		_pendingShopMapRevision = int.MinValue;
+		_pendingShopSkinChangeJump = jumpOnSkinChange;
+		SubmitSavedShopAppearance();
+	}
+
+	private void SubmitSavedShopAppearance()
+	{
+		if ( IsProxy )
+			return;
+
+		var manager = GameManager.Instance;
+		if ( manager is null )
+			return;
+
+		var revision = manager.ActiveMapRevision;
+		RequestShopAppearance( this, _shopData.SelectedSkin, _shopData.SelectedColor, revision, _shopAppearanceRequestId, _pendingShopSkinChangeJump );
+		_pendingShopMapRevision = revision;
+		_shopAppearanceRetry = 0.5f;
+	}
+
+	private void UpdateShopAppearanceSubmission()
+	{
+		if ( IsProxy )
+			return;
+
+		var manager = GameManager.Instance;
+		if ( manager is null )
+			return;
+
+		var revision = manager.ActiveMapRevision;
+		if ( revision == _submittedShopMapRevision )
+			return;
+
+		if ( revision != _pendingShopMapRevision )
+		{
+			QueueSavedShopAppearance();
+			return;
+		}
+
+		if ( _shopAppearanceRetry )
+			SubmitSavedShopAppearance();
+	}
+
+	[Rpc.Host( NetFlags.Reliable )]
+	private void RequestShopAppearance( Melon melon, string skinHeader, int colorIndex, int mapRevision, int requestId, bool jumpOnSkinChange )
+	{
+		if ( !ValidateShopCaller( melon, "appearance" ) )
+			return;
+
+		var manager = GameManager.Instance;
+		if ( manager is null || !manager.IsShopColorIndexValid( colorIndex ) )
+			return;
+
+		manager.ApplyShopAppearance( melon, skinHeader, colorIndex, jumpOnSkinChange );
+		melon.ConfirmShopAppearance( mapRevision, requestId );
+	}
+
+	[Rpc.Owner( NetFlags.HostOnly | NetFlags.Reliable )]
+	private void ConfirmShopAppearance( int mapRevision, int requestId )
+	{
+		if ( IsProxy || requestId != _shopAppearanceRequestId )
+			return;
+
+		_submittedShopMapRevision = mapRevision;
+		_pendingShopMapRevision = int.MinValue;
+	}
+
+	[Rpc.Host( NetFlags.Reliable )]
+	private void RequestShopSkinPurchase( Melon melon, string skinHeader )
+	{
+		if ( !ValidateShopCaller( melon, "skin purchase" ) )
+			return;
+
+		GameManager.Instance?.PurchaseShopSkin( melon, skinHeader );
+	}
+
+	[Rpc.Host( NetFlags.Reliable )]
+	private void RequestShopColorPurchase( Melon melon, int colorIndex )
+	{
+		if ( !ValidateShopCaller( melon, "color purchase" ) )
+			return;
+
+		GameManager.Instance?.PurchaseShopColor( melon, colorIndex );
+	}
+
+	private static bool ValidateShopCaller( Melon melon, string action )
+	{
+		if ( !Networking.IsHost || !melon.IsValid() )
+			return false;
+
+		var owner = melon.GameObject.Network.Owner;
+		if ( Rpc.Caller == owner )
+			return true;
+
+		Log.Warning( $"Rejected shop {action} from {Rpc.Caller?.DisplayName ?? "unknown"} for {owner?.DisplayName ?? melon.GameObject.Name}" );
+		return false;
+	}
+
+	[Rpc.Owner( NetFlags.HostOnly | NetFlags.Reliable )]
+	public void CompleteShopPurchase( bool isColor, string skinHeader, int colorIndex, int price )
+	{
+		if ( IsProxy )
+			return;
+
+		Coins = Math.Max( 0, Coins - Math.Max( 0, price ) );
+		SaveMoney();
+
+		if ( isColor )
+		{
+			if ( !_shopData.OwnedColors.Contains( colorIndex ) )
+				_shopData.OwnedColors.Add( colorIndex );
+
+			_shopData.SelectedColor = colorIndex;
+		}
+		else
+		{
+			if ( !_shopData.OwnedSkins.Any( owned => string.Equals( owned, skinHeader, StringComparison.OrdinalIgnoreCase ) ) )
+				_shopData.OwnedSkins.Add( skinHeader );
+
+			_shopData.SelectedSkin = skinHeader;
+		}
+
+		SaveShop();
+	}
+
+	public void SetShopAppearance( string skinHeader, int colorIndex )
+	{
+		if ( !Networking.IsHost )
+			return;
+
+		ShopSkinHeader = skinHeader;
+		ShopColorIndex = colorIndex;
+		_presentedShopSkin = null;
+		ApplyShopAppearancePresentation();
+	}
+
+	public void TryShopSkinChangeJump()
+	{
+		if ( !Networking.IsHost || !_shopSkinChangeJumpReady )
+			return;
+
+		_shopSkinChangeJumpReady = ShopSkinChangeJumpCooldown;
+		ApplyShopSkinChangeJump();
+	}
+
+	[Rpc.Owner( NetFlags.HostOnly | NetFlags.Reliable )]
+	private void ApplyShopSkinChangeJump()
+	{
+		if ( IsProxy || IsDead || !Rigidbody.IsValid() || !Rigidbody.PhysicsBody.IsValid() )
+			return;
+
+		var velocity = Rigidbody.PhysicsBody.Velocity;
+		Rigidbody.PhysicsBody.Velocity = velocity.WithZ(
+			MathF.Max( ShopSkinChangeUpVelocity, velocity.z + ShopSkinChangeUpVelocity )
+		);
+	}
+
+	private void ApplyShopAppearancePresentation()
+	{
+		var manager = GameManager.Instance;
+		if ( manager is null || !Renderer.IsValid() )
+			return;
+
+		// ModelRenderer can recreate its SceneObject after a model change. Keep the
+		// selected tint applied even when the rest of the appearance is already cached.
+		var tint = manager.GetShopColor( ShopColorIndex );
+		ApplyShopTint( tint );
+
+		if ( string.Equals( _presentedShopSkin, ShopSkinHeader, StringComparison.OrdinalIgnoreCase )
+			&& _presentedShopColor == ShopColorIndex )
+			return;
+
+		var skin = manager.GetShopSkin( ShopSkinHeader );
+		if ( skin is null || !Collider.IsValid() )
+			return;
+
+		var model = Model.Load( skin.Model.Name );
+		if ( model.IsValid() )
+			Renderer.Model = model;
+
+		ApplyShopTint( tint );
+		Renderer.GameObject.LocalScale = Vector3.One * MathF.Max( 0.01f, skin.Scale );
+		Collider.Radius = MathF.Max( 0.01f, skin.SphereRadius );
+		Collider.Center = skin.SphereCenter;
+
+		_presentedShopSkin = skin.Header;
+		_presentedShopColor = ShopColorIndex;
+	}
+
+	private void ApplyShopTint( Color tint )
+	{
+		Renderer.Tint = tint;
+
+		if ( Renderer.SceneObject.IsValid() )
+			Renderer.SceneObject.ColorTint = tint;
 	}
 
     protected override void OnFixedUpdate()
@@ -387,11 +787,17 @@ public sealed class Melon : Component, Component.ICollisionListener
 		if ( Networking.IsHost && IsDead && _respawnTimer )
 			GameManager.Instance?.RespawnSmashedMelon( this );
 
+		ApplyShopAppearancePresentation();
 		UpdateDeathPresentation();
 		UpdateWorldHud();
 
 		if ( IsProxy )
 			return;
+
+		UpdateShopAppearanceSubmission();
+
+		if ( Input.Pressed( "Kill" ) )
+			RequestKillSelf();
 
 		if ( IsDead )
 			return;
@@ -402,6 +808,36 @@ public sealed class Melon : Component, Component.ICollisionListener
 		if ( EnableCameraSystem )
 			UpdateCamera();
     }
+
+	[ConCmd( "kill" )]
+	public static void KillCommand()
+	{
+		Local?.RequestKillSelf();
+	}
+
+	public void RequestKillSelf()
+	{
+		if ( IsProxy )
+			return;
+
+		RequestKill( this );
+	}
+
+	[Rpc.Host( NetFlags.OwnerOnly | NetFlags.Reliable )]
+	private void RequestKill( Melon melon )
+	{
+		if ( !Networking.IsHost || !melon.IsValid() )
+			return;
+
+		var owner = melon.GameObject.Network.Owner;
+		if ( Rpc.Caller != owner )
+		{
+			Log.Warning( $"Rejected kill request from {Rpc.Caller?.DisplayName ?? "unknown"} for {owner?.DisplayName ?? melon.GameObject.Name}" );
+			return;
+		}
+
+		GameManager.Instance?.KillMelon( melon );
+	}
 
 	private void UpdateWorldHud()
 	{
@@ -462,9 +898,9 @@ public sealed class Melon : Component, Component.ICollisionListener
 		gameManager?.SmashMelon( otherMelon );
 	}
 
-	public bool BeginDeath()
+	public bool BeginDeath( bool ignoreSpawnInvulnerability = false )
 	{
-		if ( !Networking.IsHost || IsDead || !_spawnInvulnerability )
+		if ( !Networking.IsHost || IsDead || (!ignoreSpawnInvulnerability && !_spawnInvulnerability) )
 			return false;
 
 		IsDead = true;
@@ -528,6 +964,11 @@ public sealed class Melon : Component, Component.ICollisionListener
 	{
 		GameObject.WorldPosition = position;
 		GameObject.WorldRotation = rotation;
+
+		var spawnForward = rotation.Forward.WithZ( 0f );
+		if ( !spawnForward.IsNearZeroLength )
+			_cameraYaw = MathF.Atan2( spawnForward.y, spawnForward.x ) * 180f / MathF.PI;
+
 		StartSpawnInvulnerability();
 
 		_moveDirection = Vector3.Zero;

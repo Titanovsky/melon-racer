@@ -5,49 +5,242 @@
 @inherits PanelComponent
 @namespace Sandbox
 
-<root>
+<root class="@(DisplayMode == HudDisplayMode.Hidden ? "hidden" : "")">
 	<div class="melon-racer-hud">
 		@if ( Manager?.IsCurrentMapSupported == false )
 		{
 			<div class="unsupported-map">THIS MAP IS NOT SUPPORTED</div>
 		}
 
-		<div class="hud-section stats">
-			@foreach ( var row in RaceRows )
+		<div class="hud-content">
+			@if ( ShowLegacyHud )
 			{
-				<div class="stat-row">
-					<span class="stat-label">@row.Label</span>
-					<span class="stat-value">@row.Value</span>
+				<div class="legacy-hud">
+					<div class="hud-section stats">
+						@foreach ( var row in RaceRows )
+						{
+							<div class="stat-row">
+								<span class="stat-label">@row.Label</span>
+								<span class="stat-value">@row.Value</span>
+							</div>
+						}
+					</div>
+
+					<div class="hud-section stats">
+						<div class="stat-row">
+							<span class="stat-label">Laps:</span>
+							<span class="stat-value">@CompletedLaps / @TotalLaps</span>
+						</div>
+					</div>
 				</div>
 			}
-		</div>
 
-		<div class="hud-section stats">
-			<div class="stat-row">
-				<span class="stat-label">Laps:</span>
-				<span class="stat-value">@CompletedLaps / @TotalLaps</span>
-			</div>
+			@if ( ShowIconHud )
+			{
+				<div class="icon-hud">
+					<div class="icon-stat compact-stat time-stat">
+						<img class="hud-icon compact-icon" src="materials/icons/time.vtex" />
+						<span class="icon-value time-value">@FormatTime( RaceTime )</span>
+					</div>
+
+					<div class="icon-stat finish-stat @FinishAnimationClass">
+						<img class="hud-icon finish-icon" src="materials/icons/finish.vtex" />
+						<span class="icon-value finish-value">@CompletedLaps / @TotalLaps</span>
+						@if ( CompletedLaps > 0 && LastLapTime > 0f )
+						{
+							<span class="lap-time">@FormatTime( LastLapTime )</span>
+						}
+					</div>
+
+					<div class="icon-stat compact-stat @SegmentAnimationClass">
+						<img class="hud-icon compact-icon" src="materials/icons/segment.vtex" />
+						<span class="icon-value">@ActiveSegment</span>
+					</div>
+
+					<div class="icon-stat compact-stat coin-stat @CoinAnimationClass">
+						<img class="hud-icon compact-icon" src="materials/icons/coin.vtex" />
+						<span class="icon-value">@Coins</span>
+					</div>
+				</div>
+			}
 		</div>
 	</div>
 </root>
 
 @code
 {
+	public enum HudDisplayMode
+	{
+		Legacy,
+		Icons,
+		Combined,
+		Hidden
+	}
+
+	[ConVar( "melon_hud", ConVarFlags.Saved, Help = "Hud display mode: 0 = Legacy, 1 = Icons, 2 = Combined, 3 = Hidden" )]
+	public static int HudModeConVar { get; set; } = (int)HudDisplayMode.Icons;
+
+	[Property] public HudDisplayMode DisplayMode { get; set; } = HudDisplayMode.Icons;
+
 	private GameManager Manager => GameManager.Instance;
 	private Melon LocalMelon => Melon.Local;
+	private bool ShowLegacyHud => DisplayMode == HudDisplayMode.Legacy || DisplayMode == HudDisplayMode.Combined;
+	private bool ShowIconHud => DisplayMode == HudDisplayMode.Icons || DisplayMode == HudDisplayMode.Combined;
+	private string FinishAnimationClass => GetPulseClass( _finishAnimationStarted, _finishAnimationFlip );
+	private string SegmentAnimationClass => GetPulseClass( _segmentAnimationStarted, _segmentAnimationFlip );
+	private string CoinAnimationClass => GetPulseClass( _coinAnimationStarted, _coinAnimationFlip );
+
+	private Melon _trackedMelon;
+	private TimeUntil _finishAnimationTimer;
+	private TimeUntil _segmentAnimationTimer;
+	private TimeUntil _coinAnimationTimer;
+	private int _lastCompletedLaps;
+	private int _lastActiveSegment;
+	private int _lastCoins;
+	private bool _hasProgressSnapshot;
+	private bool _finishAnimationStarted;
+	private bool _finishAnimationFlip;
+	private bool _segmentAnimationStarted;
+	private bool _segmentAnimationFlip;
+	private bool _coinAnimationStarted;
+	private bool _coinAnimationFlip;
 
 	private (string Label, string Value)[] RaceRows => new[]
 	{
 		("Race Time:", FormatTime( RaceTime )),
-		("Active Segment:", LocalMelon?.ActiveSegmentId.ToString() ?? "n/a"),
+		("Active Segment:", ActiveSegment.ToString()),
 		("Your Best Lap:", FormatTimeOrEmpty( LocalMelon?.BestLapTime ?? 0f )),
 		("Your Last Lap:", FormatTimeOrEmpty( LocalMelon?.LastLapTime ?? 0f )),
-		("Finished:", LocalMelon?.HasFinishedRace == true ? "yes" : "no")
+		("Finished:", LocalMelon?.HasFinishedRace == true ? "yes" : "no"),
+		("Max Laps:", $"{Manager?.MaxCompletedLaps ?? 0} / {TotalLaps}"),
+		("Coins:", Coins.ToString())
 	};
 
 	private float RaceTime => Manager?.RaceElapsed ?? 0f;
 	private int CompletedLaps => LocalMelon?.CompletedLaps ?? 0;
 	private int TotalLaps => Manager?.TotalLaps ?? 0;
+	private int ActiveSegment => LocalMelon?.ActiveSegmentId ?? 0;
+	private int Coins => LocalMelon?.Coins ?? 0;
+	private float LastLapTime => LocalMelon?.LastLapTime ?? 0f;
+
+	protected override void OnEnabled()
+	{
+		DisplayMode = ClampHudMode( HudModeConVar );
+	}
+
+	protected override void OnUpdate()
+	{
+		if ( Input.Pressed( "ChangeHud" ) )
+			CycleHudMode();
+
+		var conVarMode = ClampHudMode( HudModeConVar );
+		if ( conVarMode != DisplayMode )
+		{
+			DisplayMode = conVarMode;
+			StateHasChanged();
+		}
+
+		var melon = LocalMelon;
+		if ( !melon.IsValid() )
+		{
+			_trackedMelon = null;
+			_hasProgressSnapshot = false;
+			return;
+		}
+
+		if ( !_hasProgressSnapshot || melon != _trackedMelon )
+		{
+			_trackedMelon = melon;
+			_lastCompletedLaps = melon.CompletedLaps;
+			_lastActiveSegment = melon.ActiveSegmentId;
+			_lastCoins = melon.Coins;
+			_hasProgressSnapshot = true;
+			_finishAnimationStarted = false;
+			_segmentAnimationStarted = false;
+			_coinAnimationStarted = false;
+			return;
+		}
+
+		var stateChanged = false;
+		var raceProgressReset = melon.CompletedLaps < _lastCompletedLaps;
+
+		if ( !raceProgressReset && melon.CompletedLaps > _lastCompletedLaps )
+		{
+			_finishAnimationStarted = true;
+			_finishAnimationFlip = !_finishAnimationFlip;
+			_finishAnimationTimer = 0.5f;
+			stateChanged = true;
+		}
+
+		if ( !raceProgressReset && melon.ActiveSegmentId != _lastActiveSegment )
+		{
+			_segmentAnimationStarted = true;
+			_segmentAnimationFlip = !_segmentAnimationFlip;
+			_segmentAnimationTimer = 0.5f;
+			stateChanged = true;
+		}
+
+		if ( melon.Coins > _lastCoins )
+		{
+			_coinAnimationStarted = true;
+			_coinAnimationFlip = !_coinAnimationFlip;
+			_coinAnimationTimer = 0.5f;
+			stateChanged = true;
+		}
+
+		_lastCompletedLaps = melon.CompletedLaps;
+		_lastActiveSegment = melon.ActiveSegmentId;
+		_lastCoins = melon.Coins;
+
+		if ( _finishAnimationStarted && _finishAnimationTimer )
+		{
+			_finishAnimationStarted = false;
+			stateChanged = true;
+		}
+
+		if ( _segmentAnimationStarted && _segmentAnimationTimer )
+		{
+			_segmentAnimationStarted = false;
+			stateChanged = true;
+		}
+
+		if ( _coinAnimationStarted && _coinAnimationTimer )
+		{
+			_coinAnimationStarted = false;
+			stateChanged = true;
+		}
+
+		if ( stateChanged )
+			StateHasChanged();
+	}
+
+	private void CycleHudMode()
+	{
+		DisplayMode = DisplayMode switch
+		{
+			HudDisplayMode.Legacy => HudDisplayMode.Icons,
+			HudDisplayMode.Icons => HudDisplayMode.Hidden,
+			HudDisplayMode.Hidden => HudDisplayMode.Combined,
+			_ => HudDisplayMode.Legacy
+		};
+
+		HudModeConVar = (int)DisplayMode;
+
+		StateHasChanged();
+	}
+
+	private static HudDisplayMode ClampHudMode( int value )
+	{
+		return Enum.IsDefined( typeof( HudDisplayMode ), value ) ? (HudDisplayMode)value : HudDisplayMode.Icons;
+	}
+
+	private static string GetPulseClass( bool isStarted, bool flip )
+	{
+		if ( !isStarted )
+			return string.Empty;
+
+		return flip ? "hud-pulse-a" : "hud-pulse-b";
+	}
 
 	private static string FormatTimeOrEmpty( float seconds )
 	{
@@ -63,15 +256,24 @@
 	protected override int BuildHash()
 	{
 		var melon = LocalMelon;
-
-		return HashCode.Combine(
-			(int)(RaceTime * 10f),
-			CompletedLaps,
-			TotalLaps,
-			melon?.ActiveSegmentId ?? -1,
-			(int)((melon?.BestLapTime ?? 0f) * 1000f),
-			(int)((melon?.LastLapTime ?? 0f) * 1000f),
-			melon?.HasFinishedRace ?? false,
-			Manager?.IsCurrentMapSupported ?? true );
+		var hash = new HashCode();
+		hash.Add( DisplayMode );
+		hash.Add( (int)(RaceTime * 10f) );
+		hash.Add( CompletedLaps );
+		hash.Add( TotalLaps );
+		hash.Add( ActiveSegment );
+		hash.Add( Coins );
+		hash.Add( (int)(LastLapTime * 1000f) );
+		hash.Add( _finishAnimationStarted );
+		hash.Add( _finishAnimationFlip );
+		hash.Add( _segmentAnimationStarted );
+		hash.Add( _segmentAnimationFlip );
+		hash.Add( _coinAnimationStarted );
+		hash.Add( _coinAnimationFlip );
+		hash.Add( Manager?.MaxCompletedLaps ?? 0 );
+		hash.Add( (int)((melon?.BestLapTime ?? 0f) * 1000f) );
+		hash.Add( melon?.HasFinishedRace ?? false );
+		hash.Add( Manager?.IsCurrentMapSupported ?? true );
+		return hash.ToHashCode();
 	}
 }

@@ -1,0 +1,66 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Ambi.MelonRacer;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root>
+	@if ( _isVisible )
+	{
+		<div class="laps-text @AnimationClass">@Text</div>
+	}
+</root>
+
+@code
+{
+	[Property] public string Text { get; set; } = "Lap!";
+	[Property] public float Duration { get; set; } = 1.5f;
+
+	private Melon _trackedMelon;
+	private TimeUntil _animationTimer;
+	private int _lastCompletedLaps;
+	private bool _hasSnapshot;
+	private bool _isVisible;
+	private bool _animationFlip;
+
+	private string AnimationClass => _animationFlip ? "laps-animation-a" : "laps-animation-b";
+
+	protected override void OnUpdate()
+	{
+		var melon = Melon.Local;
+		if ( !melon.IsValid() )
+		{
+			_trackedMelon = null;
+			_hasSnapshot = false;
+			_isVisible = false;
+			return;
+		}
+
+		if ( !_hasSnapshot || melon != _trackedMelon )
+		{
+			_trackedMelon = melon;
+			_lastCompletedLaps = melon.CompletedLaps;
+			_hasSnapshot = true;
+			_isVisible = false;
+			return;
+		}
+
+		if ( melon.CompletedLaps > _lastCompletedLaps )
+		{
+			_isVisible = true;
+			_animationFlip = !_animationFlip;
+			_animationTimer = System.MathF.Max( 0.01f, Duration );
+			StateHasChanged();
+		}
+
+		_lastCompletedLaps = melon.CompletedLaps;
+
+		if ( _isVisible && _animationTimer )
+		{
+			_isVisible = false;
+			StateHasChanged();
+		}
+	}
+
+	protected override int BuildHash() => System.HashCode.Combine( Text, _isVisible, _animationFlip );
+}

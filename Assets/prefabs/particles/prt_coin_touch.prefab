@@ -3,7 +3,7 @@
     "__guid": "23603683-76a9-4fce-9c56-26da7e49a19f",
     "__version": 2,
     "Flags": 0,
-    "Name": "prt_watermelon_pieces",
+    "Name": "prt_coin_touch",
     "Position": "0,0,0",
     "Rotation": "0,0,0,1",
     "Scale": "1,1,1",
@@ -76,14 +76,14 @@
         "FollowerPrefabKill": true,
         "Force": true,
         "ForceDirection": "0,0,-100",
-        "ForceScale": 2,
+        "ForceScale": 1,
         "ForceSpace": "World",
         "Friction": 1,
         "Gradient": "1,1,1,1",
         "InitialVelocity": {
           "X": 0,
           "Y": 0,
-          "Z": 0
+          "Z": 55
         },
         "Lifetime": 4,
         "LocalSpace": 0,
@@ -139,7 +139,7 @@
         "SheetSequence": false,
         "SnapToFrame": false,
         "StartDelay": 0,
-        "StartVelocity": 50,
+        "StartVelocity": 55,
         "Stretch": 0,
         "TimeScale": 1,
         "Timing": "GameTime",
@@ -160,7 +160,7 @@
         "CastShadows": false,
         "Choices": [
           {
-            "Model": "models/watermelon_piece.vmdl",
+            "Model": "models/sterling/smodel_coin/smodel_coin.vmdl",
             "MaterialGroup": null,
             "BodyGroups": 18446744073709551615
           }
@@ -179,7 +179,7 @@
           "AfterUILayer": false
         },
         "RotateWithGameObject": false,
-        "Scale": 0.35,
+        "Scale": 0.75,
         "Target": null
       },
       {
@@ -233,6 +233,8 @@
   "MenuPath": null,
   "MenuIcon": null,
   "DontBreakAsTemplate": false,
-  "__references": [],
+  "__references": [
+    "smd.dontbeweird3#2280"
+  ],
   "__version": 2
 }

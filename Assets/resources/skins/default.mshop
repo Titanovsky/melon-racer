@@ -1,0 +1,12 @@
+{
+  "Header": "Default (Gmod)",
+  "Price": 0,
+  "Model": "models/watermelon01.vmdl",
+  "Scale": 1,
+  "SphereRadius": 8,
+  "SphereCenter": "0,0,0",
+  "__references": [
+    "raphmap.watermelon01#37132"
+  ],
+  "__version": 0
+}

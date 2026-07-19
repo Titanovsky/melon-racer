@@ -1,0 +1,173 @@
+@using Sandbox;
+@using Sandbox.UI;
+@using Ambi.MelonRacer;
+@using System;
+@using System.Collections.Generic;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root class="@(IsOpen ? "open" : "closed")">
+	@if ( IsOpen )
+	{
+		<div class="shop-window">
+			<div class="shop-controls">
+				<button class="close-button" onclick=@( () => CloseShop() )>×</button>
+			</div>
+
+			<div class="skin-list">
+				@foreach ( var skin in Skins )
+				{
+					<div class="skin-card @(LocalMelon?.IsShopSkinSelected( skin.Header ) == true ? "selected" : "")">
+						<div class="skin-name">@skin.Header</div>
+						<div class="skin-thumbnail">
+							<ShopSkinPreview class="skin-scene" Skin="@skin"></ShopSkinPreview>
+						</div>
+						<div class="skin-actions">
+							<div class="skin-price">
+								<img src="materials/icons/coin.vtex" />
+								<span>@Math.Max( 0, skin.Price )</span>
+							</div>
+							<button class="purchase-button @GetSkinButtonClass( skin )" onclick=@(() => BuyOrSelectSkin( skin ))>
+								@GetSkinButtonText( skin )
+							</button>
+						</div>
+					</div>
+				}
+			</div>
+
+			<div class="color-list">
+				@for ( var colorIndex = 0; colorIndex < Colors.Count; colorIndex++ )
+				{
+					var index = colorIndex;
+					var color = Colors[index];
+					<button class="color-button @GetColorButtonClass( index )"
+						style=@($"background-color: {color.Hex}")
+						onclick=@(() => BuyOrSelectColor( index ))>
+						@if ( LocalMelon?.OwnsShopColor( index ) != true )
+						{
+							<div class="color-price">
+								<img src="materials/icons/coin.vtex" />
+								<span>@ColorPrice</span>
+							</div>
+						}
+					</button>
+				}
+			</div>
+		</div>
+	}
+</root>
+
+@code
+{
+	private GameManager Manager => GameManager.Instance;
+	private Melon LocalMelon => Melon.Local;
+	private IReadOnlyList<MelonShopConfig> Skins => Manager?.ShopSkins ?? Array.Empty<MelonShopConfig>();
+	private IReadOnlyList<Color> Colors
+	{
+		get
+		{
+			if ( Manager?.ShopColors is { } colors )
+				return colors;
+
+			return Array.Empty<Color>();
+		}
+	}
+	private int ColorPrice => Manager?.ShopColorPrice ?? 20;
+	private bool IsOpen { get; set; }
+
+	protected override void OnUpdate()
+	{
+		if ( Input.Pressed( "Shop" ) )
+		{
+			IsOpen = !IsOpen;
+			StateHasChanged();
+		}
+
+		Mouse.Visibility = IsOpen || Manager?.IsMapVoteOpen == true
+			? MouseVisibility.Visible
+			: MouseVisibility.Hidden;
+	}
+
+	private void CloseShop()
+	{
+		IsOpen = false;
+		StateHasChanged();
+	}
+
+	private bool CanAfford( int price )
+	{
+		return LocalMelon.IsValid() && LocalMelon.Coins >= Math.Max( 0, price );
+	}
+
+	private string GetSkinButtonClass( MelonShopConfig skin )
+	{
+		if ( LocalMelon?.IsShopSkinSelected( skin.Header ) == true )
+			return "selected";
+
+		if ( LocalMelon?.OwnsShopSkin( skin.Header ) == true )
+			return "owned";
+
+		return CanAfford( skin.Price ) ? "affordable" : "unaffordable";
+	}
+
+	private string GetSkinButtonText( MelonShopConfig skin )
+	{
+		if ( LocalMelon?.IsShopSkinSelected( skin.Header ) == true )
+			return "SELECTED";
+
+		if ( LocalMelon?.OwnsShopSkin( skin.Header ) == true )
+			return "EQUIP";
+
+		return "BUY";
+	}
+
+	private string GetColorButtonClass( int colorIndex )
+	{
+		if ( LocalMelon?.IsShopColorSelected( colorIndex ) == true )
+			return "selected";
+
+		if ( LocalMelon?.OwnsShopColor( colorIndex ) == true )
+			return "owned";
+
+		return CanAfford( ColorPrice ) ? "affordable" : "unaffordable";
+	}
+
+	private void BuyOrSelectSkin( MelonShopConfig skin )
+	{
+		LocalMelon?.BuyOrSelectShopSkin( skin );
+		StateHasChanged();
+	}
+
+	private void BuyOrSelectColor( int colorIndex )
+	{
+		LocalMelon?.BuyOrSelectShopColor( colorIndex );
+		StateHasChanged();
+	}
+
+	protected override int BuildHash()
+	{
+		var hash = new HashCode();
+		hash.Add( IsOpen );
+		hash.Add( LocalMelon?.Coins ?? 0 );
+		hash.Add( LocalMelon?.ShopSkinHeader );
+		hash.Add( LocalMelon?.ShopColorIndex ?? 0 );
+		hash.Add( ColorPrice );
+
+		foreach ( var skin in Skins )
+		{
+			hash.Add( skin.Header );
+			hash.Add( skin.Price );
+			hash.Add( LocalMelon?.OwnsShopSkin( skin.Header ) ?? false );
+			hash.Add( LocalMelon?.IsShopSkinSelected( skin.Header ) ?? false );
+		}
+
+		for ( var colorIndex = 0; colorIndex < Colors.Count; colorIndex++ )
+		{
+			hash.Add( Colors[colorIndex] );
+			hash.Add( LocalMelon?.OwnsShopColor( colorIndex ) ?? false );
+			hash.Add( LocalMelon?.IsShopColorSelected( colorIndex ) ?? false );
+		}
+
+		return hash.ToHashCode();
+	}
+}

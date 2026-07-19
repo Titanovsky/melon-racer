@@ -1,0 +1,62 @@
+@using Sandbox;
+@using Sandbox.UI;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root>
+	@if ( _isVisible )
+	{
+		<div class="keyboard-list">
+			<div class="keyboard-row">
+				<div class="keys"><span class="key">Q</span></div>
+				<span class="description">Shop</span>
+			</div>
+
+			<div class="keyboard-row">
+				<div class="keys"><span class="key wide">Shift</span></div>
+				<span class="description">Run</span>
+			</div>
+
+			<div class="keyboard-row">
+				<div class="keys"><span class="key wide">Ctrl</span></div>
+				<span class="description">Slow down</span>
+			</div>
+
+			<div class="keyboard-row">
+				<div class="keys"><span class="key wide">Tab</span></div>
+				<span class="description">Scoreboard</span>
+			</div>
+
+			<div class="keyboard-row">
+				<div class="keys"><span class="key">R</span></div>
+				<span class="description">Kill</span>
+			</div>
+
+			<div class="keyboard-row">
+				<div class="keys"><span class="key">C</span></div>
+				<span class="description">Change HUD</span>
+			</div>
+
+			<div class="keyboard-row">
+				<div class="keys"><span class="key">X</span></div>
+				<span class="description">Show / hide this panel</span>
+			</div>
+		</div>
+	}
+</root>
+
+@code
+{
+	private bool _isVisible = true;
+
+	protected override void OnUpdate()
+	{
+		if ( !Input.Pressed( "KeyboardsHide" ) )
+			return;
+
+		_isVisible = !_isVisible;
+		StateHasChanged();
+	}
+
+	protected override int BuildHash() => System.HashCode.Combine( _isVisible );
+}

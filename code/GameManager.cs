@@ -7,6 +7,8 @@ namespace Ambi.MelonRacer;
 
 public sealed class GameManager : Component
 {
+	private const string ShopSkinDirectory = "resources/skins/";
+	private const string DefaultShopSkinPath = ShopSkinDirectory + "default.mshop";
     private const float MapVoteDuration = 10f;
 	private const float SpawnOverlapRadius = 16f;
 	private const float SpawnOverlapHeight = 10f;
@@ -17,7 +19,8 @@ public sealed class GameManager : Component
     public static readonly string[] MapVoteChoices =
     {
         "titanovsky.melon_lestoria",
-        "titanovsky.melon_snowball"
+		"titanovsky.melon_snowball",
+		"facepunch.flatgrass"
     };
 
     public static GameManager Instance { get; private set; }
@@ -27,26 +30,60 @@ public sealed class GameManager : Component
 	[Property, Group( "Sounds" )] public SoundEvent ActiveSegmentSound { get; set; }
 	[Property, Group( "Sounds" )] public SoundEvent FinalSegmentSound { get; set; }
 	[Property, Group( "Sounds" )] public SoundEvent LevelStartSound { get; set; }
+	[Property, Group( "Money" )] public int DefaultMoney { get; set; } = 0;
+	[Property, Group( "Coins" )] public int MaxActiveCoins { get; set; } = 5;
+	[Property, Group( "Coins" )] public float CoinRefreshDelay { get; set; } = 90f;
+	[Property, Group( "Shop" )] public int ShopColorPrice { get; set; } = 20;
+	[Property, Group( "Shop" )] public List<Color> ShopColors { get; set; } = new()
+	{
+		new Color( 1f, 1f, 1f ),
+		new Color( 0.03f, 0.03f, 0.03f ),
+		new Color( 0.93f, 0.22f, 0.22f ),
+		new Color( 1f, 0.49f, 0.12f ),
+		new Color( 1f, 0.82f, 0.18f ),
+		new Color( 0.55f, 0.86f, 0.22f ),
+		new Color( 0.13f, 0.72f, 0.32f ),
+		new Color( 0.12f, 0.76f, 0.68f ),
+		new Color( 0.11f, 0.68f, 0.94f ),
+		new Color( 0.24f, 0.43f, 0.94f ),
+		new Color( 0.45f, 0.28f, 0.94f ),
+		new Color( 0.67f, 0.26f, 0.91f ),
+		new Color( 0.91f, 0.24f, 0.73f ),
+		new Color( 0.94f, 0.41f, 0.62f ),
+		new Color( 0.54f, 0.33f, 0.19f ),
+		new Color( 0.55f, 0.60f, 0.68f )
+	};
 
     [Sync( SyncFlags.FromHost )] public TimeUntil RaceTimer { get; private set; }
+	[Sync( SyncFlags.FromHost )] public float FrozenRaceElapsed { get; private set; }
     [Sync( SyncFlags.FromHost )] public TimeUntil MapVoteTimer { get; private set; }
     [Sync( SyncFlags.FromHost )] public bool IsRaceActive { get; private set; }
     [Sync( SyncFlags.FromHost )] public bool IsMapVoteOpen { get; private set; }
     [Sync( SyncFlags.FromHost )] public int LestoriaVotes { get; private set; }
     [Sync( SyncFlags.FromHost )] public int SnowballVotes { get; private set; }
+	[Sync( SyncFlags.FromHost )] public int FlatgrassVotes { get; private set; }
     [Sync( SyncFlags.FromHost )] public int TotalLaps { get; private set; } = 1;
+	[Sync( SyncFlags.FromHost )] public int MaxCompletedLaps { get; private set; }
     [Sync( SyncFlags.FromHost )] public string ActiveMapName { get; private set; }
     [Sync( SyncFlags.FromHost )] public int ActiveMapRevision { get; private set; }
 	[Sync( SyncFlags.FromHost )] public TimeUntil MapInactivityTimer { get; private set; }
 	[Sync( SyncFlags.FromHost )] public bool IsCurrentMapSupported { get; private set; } = true;
+	[Property, Group( "Money" ), Sync( SyncFlags.FromHost )] public int MoneyVersion { get; set; } = 0;
 
     public global::MapInfo CurrentMapInfo { get; private set; }
     public IReadOnlyList<int> SegmentIds => _segmentIds;
+	public IReadOnlyList<MelonShopConfig> ShopSkins => MelonShopConfig.All
+		.Where( config => config?.ResourcePath?.StartsWith( ShopSkinDirectory, StringComparison.OrdinalIgnoreCase ) == true )
+		.OrderBy( config => config.Price )
+		.ThenBy( config => config.Header )
+		.ToList();
+	public MelonShopConfig DefaultShopSkin => ResourceLibrary.Get<MelonShopConfig>( DefaultShopSkinPath );
 
     private readonly List<int> _segmentIds = new();
+    private readonly List<Coin> _coins = new();
     private readonly Dictionary<string, string> _mapVotes = new();
+	private TimeUntil _coinRefreshTimer;
     private GameObject _spawnedMapObject;
-	private bool _spawnedMapObjectIsLocal;
     private bool _mapEventsHooked;
     private string _spawnedMapPrefabPath;
     private string _pendingMapName;
@@ -57,10 +94,90 @@ public sealed class GameManager : Component
 	private string _mapSetupMapName;
 	private int _mapSetupAttempts;
 	private bool _mapPrefabUnavailable;
+	private Melon _leaderboardLocalMelon;
+	private string _leaderboardMapName;
+	private bool _localRaceResultSubmitted;
 
-    public float RaceElapsed => IsRaceActive ? MathF.Max( 0f, -(float)RaceTimer ) : 0f;
+	public float RaceElapsed => IsRaceActive
+		? MathF.Max( 0f, -(float)RaceTimer )
+		: FrozenRaceElapsed;
     public float MapVoteSecondsLeft => IsMapVoteOpen ? MathF.Max( 0f, MapVoteTimer.Relative ) : 0f;
     public int FirstSegmentId => _segmentIds.Count > 0 ? _segmentIds[0] : 0;
+
+	public MelonShopConfig GetShopSkin( string header )
+	{
+		if ( string.IsNullOrWhiteSpace( header ) )
+			return DefaultShopSkin ?? ShopSkins.FirstOrDefault();
+
+		var skin = ShopSkins.FirstOrDefault( config =>
+			string.Equals( config.Header, header, StringComparison.OrdinalIgnoreCase ) );
+
+		return skin ?? (string.Equals( header, "Default (gmod)", StringComparison.OrdinalIgnoreCase )
+			? DefaultShopSkin
+			: null);
+	}
+
+	public Color GetShopColor( int colorIndex )
+	{
+		if ( ShopColors is null || ShopColors.Count == 0 )
+			return Color.White;
+
+		return ShopColors[Math.Clamp( colorIndex, 0, ShopColors.Count - 1 )];
+	}
+
+	public bool IsShopColorIndexValid( int colorIndex )
+	{
+		return ShopColors is not null && colorIndex >= 0 && colorIndex < ShopColors.Count;
+	}
+
+	public void ApplyShopAppearance( Melon melon, string skinHeader, int colorIndex, bool jumpOnSkinChange = false )
+	{
+		if ( !Networking.IsHost || !melon.IsValid() || !IsShopColorIndexValid( colorIndex ) )
+			return;
+
+		var skin = GetShopSkin( skinHeader );
+		var resolvedSkinHeader = skin?.Header;
+		if ( string.IsNullOrWhiteSpace( resolvedSkinHeader ) )
+			resolvedSkinHeader = string.IsNullOrWhiteSpace( skinHeader ) ? melon.ShopSkinHeader : skinHeader;
+
+		// Tint restoration must not wait for custom Resource Assets to finish loading.
+		// The renderer can use the synced color immediately and resolve the skin later.
+		var skinChanged = !string.Equals( melon.ShopSkinHeader, resolvedSkinHeader, StringComparison.OrdinalIgnoreCase );
+		melon.SetShopAppearance( resolvedSkinHeader, colorIndex );
+
+		if ( jumpOnSkinChange && skinChanged )
+			melon.TryShopSkinChangeJump();
+	}
+
+	public void PurchaseShopSkin( Melon melon, string skinHeader )
+	{
+		if ( !Networking.IsHost || !melon.IsValid() )
+			return;
+
+		var skin = GetShopSkin( skinHeader );
+		if ( skin is null )
+			return;
+
+		var price = Math.Max( 0, skin.Price );
+		if ( melon.Coins < price )
+			return;
+
+		melon.CompleteShopPurchase( false, skin.Header, 0, price );
+		ApplyShopAppearance( melon, skin.Header, melon.ShopColorIndex, true );
+	}
+
+	public void PurchaseShopColor( Melon melon, int colorIndex )
+	{
+		if ( !Networking.IsHost || !melon.IsValid() || !IsShopColorIndexValid( colorIndex ) )
+			return;
+
+		var price = Math.Max( 0, ShopColorPrice );
+		if ( melon.Coins < price )
+			return;
+
+		melon.CompleteShopPurchase( true, string.Empty, colorIndex, price );
+		melon.SetShopAppearance( melon.ShopSkinHeader, colorIndex );
+	}
 
     protected override void OnAwake()
     {
@@ -73,9 +190,9 @@ public sealed class GameManager : Component
 		ResetMapSetup();
 		_mapVotes.Clear();
 		_segmentIds.Clear();
+		_coins.Clear();
 		CurrentMapInfo = null;
 		_spawnedMapObject = null;
-		_spawnedMapObjectIsLocal = false;
 		_spawnedMapPrefabPath = null;
 
 		if ( Instance == this )
@@ -100,11 +217,11 @@ public sealed class GameManager : Component
 
     protected override void OnUpdate()
     {
+		TrySubmitLocalRaceResult();
 		ApplyPendingMapChange();
 		UpdateMapSetup();
-		DisableDuplicateClientMapPrefabs();
 
-        if ( !Networking.IsHost )
+		if ( !Networking.IsHost )
         {
             ApplyActiveMap();
             return;
@@ -120,6 +237,107 @@ public sealed class GameManager : Component
 
 		if ( MapInactivityDuration > 0f && MapInactivityTimer )
 			ChangeToRandomMap();
+
+		if ( _coins.Count > 0 && _coinRefreshTimer )
+			RefreshCoins();
+    }
+
+	public void TrySubmitLocalRaceResult()
+	{
+		var localMelon = Melon.Local;
+		var mapFullName = MapInstance.IsValid() ? MapInstance.MapName : string.Empty;
+
+		if ( Connection.Local is null || !localMelon.IsValid() || string.IsNullOrWhiteSpace( mapFullName ) )
+		{
+			_leaderboardLocalMelon = null;
+			_leaderboardMapName = null;
+			_localRaceResultSubmitted = false;
+			return;
+		}
+
+		if ( localMelon != _leaderboardLocalMelon
+			|| !string.Equals( mapFullName, _leaderboardMapName, StringComparison.OrdinalIgnoreCase ) )
+		{
+			_leaderboardLocalMelon = localMelon;
+			_leaderboardMapName = mapFullName;
+			_localRaceResultSubmitted = false;
+		}
+
+		if ( !localMelon.HasFinishedRace )
+		{
+			_localRaceResultSubmitted = false;
+			return;
+		}
+
+		if ( _localRaceResultSubmitted || RaceElapsed <= 0f )
+			return;
+
+		_localRaceResultSubmitted = true;
+		RaceLeaderboardService.SubmitLocalResult( mapFullName, RaceElapsed );
+	}
+
+    public void PickupCoin( Melon melon, Coin coin )
+    {
+        if ( !Networking.IsHost || !melon.IsValid() || !coin.IsValid() || !coin.IsOpen )
+            return;
+
+        coin.Close();
+		coin.SpawnTouchParticle();
+
+        var owner = melon.GameObject.Network.Owner;
+        if ( owner != null && owner.IsActive )
+        {
+            using ( Rpc.FilterInclude( owner ) )
+            {
+				melon.GrantCoin( coin.GameObject );
+            }
+
+            return;
+        }
+
+		if ( !melon.IsProxy )
+		{
+			coin.PlayTouchSound();
+            melon.GrantCoinLocal();
+		}
+    }
+
+    private void SetupCoins()
+    {
+        if ( !Networking.IsHost )
+            return;
+
+        _coins.Clear();
+
+        IEnumerable<Coin> coins = CurrentMapInfo.IsValid()
+            ? CurrentMapInfo.GameObject.GetComponentsInChildren<Coin>( true, true )
+            : Scene.GetAllComponents<Coin>();
+
+        _coins.AddRange( coins.Where( coin => coin.IsValid() ) );
+
+        RefreshCoins();
+    }
+
+    private void RefreshCoins()
+    {
+        if ( !Networking.IsHost )
+            return;
+
+        foreach ( var coin in _coins )
+        {
+            if ( coin.IsValid() )
+                coin.Close();
+        }
+
+        var openCoins = _coins
+            .Where( coin => coin.IsValid() )
+            .OrderBy( _ => Random.Shared.Next() )
+            .Take( Math.Max( 0, MaxActiveCoins ) );
+
+        foreach ( var coin in openCoins )
+            coin.Open();
+
+        _coinRefreshTimer = MathF.Max( 1f, CoinRefreshDelay );
     }
 
     public void RegisterMelon( Melon melon )
@@ -148,6 +366,17 @@ public sealed class GameManager : Component
 
         Log.Info( $"Melon smashed: {melon.GameObject.Network.Owner?.Name ?? melon.GameObject.Name}" );
     }
+
+	public void KillMelon( Melon melon )
+	{
+		if ( !Networking.IsHost || !melon.IsValid() )
+			return;
+
+		if ( !melon.BeginDeath( true ) )
+			return;
+
+		Log.Info( $"Melon killed: {melon.GameObject.Network.Owner?.Name ?? melon.GameObject.Name}" );
+	}
 
     public void RespawnSmashedMelon( Melon melon )
     {
@@ -178,6 +407,7 @@ public sealed class GameManager : Component
 
         var lapTime = RaceElapsed - melon.CurrentLapStartedAt;
         var completedLaps = melon.CompletedLaps + 1;
+		MaxCompletedLaps = Math.Max( MaxCompletedLaps, completedLaps );
 
         melon.CompleteLap( completedLaps, lapTime, FirstSegmentId, RaceElapsed );
 
@@ -279,7 +509,7 @@ public sealed class GameManager : Component
 
         _mapVotes[voterId] = mapName;
         RecountMapVotes();
-        Log.Info( $"Vote accepted from {GetVoterLogName( voterId, voterName )}: {mapName}. {MapVoteChoices[0]}={LestoriaVotes}, {MapVoteChoices[1]}={SnowballVotes}" );
+		Log.Info( $"Vote accepted from {GetVoterLogName( voterId, voterName )}: {mapName}. {GetMapVoteSummary()}" );
 
 		if ( HaveAllPlayersVoted() )
 		{
@@ -317,6 +547,7 @@ public sealed class GameManager : Component
     {
         CurrentMapInfo ??= Scene.GetAllComponents<global::MapInfo>().FirstOrDefault();
         TotalLaps = Math.Max( 1, CurrentMapInfo?.Laps ?? 1 );
+		MaxCompletedLaps = 0;
 
         IEnumerable<global::TriggerSegment> segments = CurrentMapInfo.IsValid()
             ? CurrentMapInfo.GameObject.GetComponentsInChildren<global::TriggerSegment>( true, true )
@@ -328,9 +559,10 @@ public sealed class GameManager : Component
             .Distinct()
             .OrderBy( segmentId => segmentId ) );
 
-        if ( _segmentIds.Count == 0 )
-            _segmentIds.Add( 0 );
+		if ( _segmentIds.Count == 0 )
+			_segmentIds.Add( 0 );
 
+		FrozenRaceElapsed = 0f;
         RaceTimer = 0f;
         IsRaceActive = true;
     }
@@ -342,6 +574,7 @@ public sealed class GameManager : Component
 
         CloseMapVote();
         SetupRace();
+        SetupCoins();
         RespawnAllMelons();
 		ResetMapInactivityTimer();
 		PlayLevelStartSound( MapInstance.MapName );
@@ -358,6 +591,8 @@ public sealed class GameManager : Component
 		_segmentIds.Clear();
 		_segmentIds.Add( 0 );
 		TotalLaps = 1;
+		MaxCompletedLaps = 0;
+		FrozenRaceElapsed = 0f;
 		RaceTimer = 0f;
 		IsRaceActive = true;
 		RespawnAllMelons();
@@ -380,7 +615,7 @@ public sealed class GameManager : Component
     {
 		ResetMapSetup();
 
-		if ( Networking.IsHost || _spawnedMapObjectIsLocal )
+		if ( Networking.IsHost )
 		{
 			if ( CurrentMapInfo.IsValid() )
 				CurrentMapInfo.GameObject.Destroy();
@@ -390,16 +625,20 @@ public sealed class GameManager : Component
 
         CurrentMapInfo = null;
         _spawnedMapObject = null;
-		_spawnedMapObjectIsLocal = false;
         _spawnedMapPrefabPath = null;
         _segmentIds.Clear();
+        _coins.Clear();
 
-        if ( !Networking.IsHost )
-            return;
+		if ( !Networking.IsHost )
+			return;
+
+		if ( IsRaceActive )
+			FrozenRaceElapsed = RaceElapsed;
 
         IsRaceActive = false;
         CloseMapVote();
         TotalLaps = 1;
+		MaxCompletedLaps = 0;
     }
 
     private void OpenMapVote()
@@ -410,6 +649,7 @@ public sealed class GameManager : Component
         if ( IsMapVoteOpen )
             return;
 
+		FrozenRaceElapsed = RaceElapsed;
         IsRaceActive = false;
         IsMapVoteOpen = true;
         MapVoteTimer = MapVoteDuration;
@@ -430,11 +670,13 @@ public sealed class GameManager : Component
 			return;
 		}
 
-        var selectedMap = LestoriaVotes >= SnowballVotes
-            ? MapVoteChoices[0]
-            : MapVoteChoices[1];
+		var selectedMap = MapVoteChoices
+			.Select( (mapName, index) => new { MapName = mapName, Votes = GetMapVoteCount( mapName ), Index = index } )
+			.OrderByDescending( choice => choice.Votes )
+			.ThenBy( choice => choice.Index )
+			.First().MapName;
 
-        Log.Info( $"Map vote finished. Selected {selectedMap}. {MapVoteChoices[0]}={LestoriaVotes}, {MapVoteChoices[1]}={SnowballVotes}" );
+		Log.Info( $"Map vote finished. Selected {selectedMap}. {GetMapVoteSummary()}" );
         CloseMapVote();
         ChangeMap( selectedMap );
     }
@@ -526,13 +768,34 @@ public sealed class GameManager : Component
         _mapVotes.Clear();
         LestoriaVotes = 0;
         SnowballVotes = 0;
+		FlatgrassVotes = 0;
     }
 
     private void RecountMapVotes()
     {
         LestoriaVotes = _mapVotes.Values.Count( mapName => mapName == MapVoteChoices[0] );
         SnowballVotes = _mapVotes.Values.Count( mapName => mapName == MapVoteChoices[1] );
+		FlatgrassVotes = _mapVotes.Values.Count( mapName => mapName == MapVoteChoices[2] );
     }
+
+	public int GetMapVoteCount( string mapName )
+	{
+		if ( mapName == MapVoteChoices[0] )
+			return LestoriaVotes;
+
+		if ( mapName == MapVoteChoices[1] )
+			return SnowballVotes;
+
+		if ( mapName == MapVoteChoices[2] )
+			return FlatgrassVotes;
+
+		return 0;
+	}
+
+	private string GetMapVoteSummary()
+	{
+		return string.Join( ", ", MapVoteChoices.Select( mapName => $"{mapName}={GetMapVoteCount( mapName )}" ) );
+	}
 
     private bool SpawnMapInfoPrefab()
     {
@@ -544,21 +807,22 @@ public sealed class GameManager : Component
         if ( _spawnedMapObject.IsValid() && _spawnedMapPrefabPath == prefabPath )
 			return CurrentMapInfo.IsValid();
 
-		if ( Networking.IsHost )
-		{
-			var existingMapInfo = Scene.GetAllComponents<global::MapInfo>().FirstOrDefault( candidate =>
-				candidate.IsValid()
-				&& string.Equals( candidate.Header, prefabName, StringComparison.OrdinalIgnoreCase ) );
+		var existingMapInfo = Scene.GetAllComponents<global::MapInfo>().FirstOrDefault( candidate =>
+			candidate.IsValid()
+			&& string.Equals( candidate.Header, prefabName, StringComparison.OrdinalIgnoreCase ) );
 
-			if ( existingMapInfo.IsValid() )
-			{
-				_spawnedMapObject = existingMapInfo.GameObject;
-				_spawnedMapObjectIsLocal = false;
-				_spawnedMapPrefabPath = prefabPath;
-				CurrentMapInfo = existingMapInfo;
-				return true;
-			}
+		if ( existingMapInfo.IsValid() )
+		{
+			_spawnedMapObject = existingMapInfo.GameObject;
+			_spawnedMapPrefabPath = prefabPath;
+			CurrentMapInfo = existingMapInfo;
+			return true;
 		}
+
+		// The host owns the map-info prefab. Clients must wait for that same
+		// network object so Coin.IsOpen is synchronized on the actual coins.
+		if ( !Networking.IsHost )
+			return false;
 
         var prefab = GameObject.GetPrefab( prefabPath );
         if ( !prefab.IsValid() )
@@ -578,9 +842,7 @@ public sealed class GameManager : Component
 			return false;
         }
 
-		_spawnedMapObjectIsLocal = !Networking.IsHost;
-		if ( Networking.IsHost )
-			_spawnedMapObject.NetworkSpawn();
+		_spawnedMapObject.NetworkSpawn();
 
         _spawnedMapPrefabPath = prefabPath;
 
@@ -589,29 +851,12 @@ public sealed class GameManager : Component
 		{
 			_spawnedMapObject.Destroy();
 			_spawnedMapObject = null;
-			_spawnedMapObjectIsLocal = false;
 			_spawnedMapPrefabPath = null;
 			return false;
 		}
 
 		return true;
     }
-
-	private void DisableDuplicateClientMapPrefabs()
-	{
-		if ( Networking.IsHost || !_spawnedMapObjectIsLocal || !CurrentMapInfo.IsValid() )
-			return;
-
-		foreach ( var mapInfo in Scene.GetAllComponents<global::MapInfo>() )
-		{
-			if ( !mapInfo.IsValid()
-				|| mapInfo == CurrentMapInfo
-				|| !string.Equals( mapInfo.Header, CurrentMapInfo.Header, StringComparison.OrdinalIgnoreCase ) )
-				continue;
-
-			mapInfo.GameObject.Enabled = false;
-		}
-	}
 
     private void RespawnAllMelons()
     {
@@ -795,7 +1040,7 @@ public sealed class GameManager : Component
 
 		if ( !setupSucceeded )
 		{
-			if ( _mapPrefabUnavailable || _mapSetupAttempts >= MapPrefabMaxAttempts )
+			if ( _mapPrefabUnavailable || (Networking.IsHost && _mapSetupAttempts >= MapPrefabMaxAttempts) )
 			{
 				ResetMapSetup();
 
@@ -841,4 +1086,10 @@ public sealed class GameManager : Component
         nextSegmentId = FirstSegmentId;
         return false;
     }
+}
+
+public class MoneySaveData
+{
+    public int Version { get; set; }
+    public int Money { get; set; }
 }

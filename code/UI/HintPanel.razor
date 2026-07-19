@@ -1,0 +1,55 @@
+@using Sandbox;
+@using Sandbox.UI;
+@inherits PanelComponent
+@namespace Sandbox
+
+<root>
+	@if ( _isVisible )
+	{
+		<div class="hint">@CurrentHint</div>
+	}
+</root>
+
+@code
+{
+	[Property] public float Delay { get; set; } = 20f;
+	[Property] public float TimeLife { get; set; } = 8f;
+
+	private readonly string[] _hints =
+	{
+		"Press X to show or hide the controls panel"
+	};
+
+	private TimeUntil _timer;
+	private bool _isVisible;
+	private int _hintIndex;
+
+	private string CurrentHint => _hints[_hintIndex];
+
+	protected override void OnStart()
+	{
+		_timer = System.MathF.Max( 0f, Delay );
+	}
+
+	protected override void OnUpdate()
+	{
+		if ( !_timer )
+			return;
+
+		if ( _isVisible )
+		{
+			_isVisible = false;
+			_hintIndex = (_hintIndex + 1) % _hints.Length;
+			_timer = System.MathF.Max( 0f, Delay );
+		}
+		else
+		{
+			_isVisible = true;
+			_timer = System.MathF.Max( 0f, TimeLife );
+		}
+
+		StateHasChanged();
+	}
+
+	protected override int BuildHash() => System.HashCode.Combine( _isVisible, _hintIndex );
+}

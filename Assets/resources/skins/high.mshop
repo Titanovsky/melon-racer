@@ -1,0 +1,12 @@
+{
+  "Header": "High",
+  "Price": 100,
+  "Model": "models/rawcatalog/watermelon/watermelon.vmdl",
+  "Scale": 2,
+  "SphereRadius": 5,
+  "SphereCenter": "0,0,4.5999999",
+  "__references": [
+    "titanovsky.watermelon#53807"
+  ],
+  "__version": 0
+}

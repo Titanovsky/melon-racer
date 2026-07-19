@@ -61,20 +61,44 @@
           "__enabled": true,
           "Flags": 0,
           "ActiveSegmentSound": "sounds/segment.sound",
+          "CoinRefreshDelay": 60,
+          "DefaultMoney": 0,
           "FinalSegmentSound": "sounds/segment_final.sound",
           "LevelStartSound": "sounds/start.sound",
+          "MapInactivityDuration": 1200,
           "MapInstance": {
             "_type": "component",
             "component_id": "e403c0dc-c69e-45fa-82c1-d8e9a241d3dd",
             "go": "ee86bb5a-d1b9-4e56-b37c-2582278c2c82",
             "component_type": "MapInstance"
           },
+          "MaxActiveCoins": 5,
+          "MoneyVersion": 0,
           "OnComponentDestroy": null,
           "OnComponentDisabled": null,
           "OnComponentEnabled": null,
           "OnComponentFixedUpdate": null,
           "OnComponentStart": null,
-          "OnComponentUpdate": null
+          "OnComponentUpdate": null,
+          "ShopColorPrice": 1,
+          "ShopColors": [
+            "1,1,1,1",
+            "0.03,0.03,0.03,1",
+            "0.93,0.22,0.22,1",
+            "1,0.49,0.12,1",
+            "1,0.82,0.18,1",
+            "0.55,0.86,0.22,1",
+            "0.13,0.72,0.32,1",
+            "0.12,0.76,0.68,1",
+            "0.11,0.68,0.94,1",
+            "0.24,0.43,0.94,1",
+            "0.45,0.28,0.94,1",
+            "0.67,0.26,0.91,1",
+            "0.91,0.24,0.73,1",
+            "0.94,0.41,0.62,1",
+            "0.54,0.33,0.19,1",
+            "0.55,0.6,0.68,1"
+          ]
         }
       ],
       "Children": []
@@ -156,18 +180,6 @@
           "ZIndex": 100
         },
         {
-          "__type": "Sandbox.Hud",
-          "__guid": "30ff5684-175a-47e8-bfa6-6d052285738d",
-          "__enabled": true,
-          "Flags": 0,
-          "OnComponentDestroy": null,
-          "OnComponentDisabled": null,
-          "OnComponentEnabled": null,
-          "OnComponentFixedUpdate": null,
-          "OnComponentStart": null,
-          "OnComponentUpdate": null
-        },
-        {
           "__type": "Sandbox.VoteMapPanel",
           "__guid": "de672670-f43a-4e67-9ade-54eff5b85a2d",
           "__enabled": true,
@@ -194,6 +206,71 @@
         {
           "__type": "Sandbox.MapLoadingPanel",
           "__guid": "e7920f85-ae16-41ca-bcb2-03b7812c0638",
+          "__enabled": true,
+          "Flags": 0,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        },
+        {
+          "__type": "Sandbox.KeyboardsPanel",
+          "__guid": "6b5417fd-95e4-487f-bbf6-3f455e9fb841",
+          "__enabled": true,
+          "Flags": 0,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        },
+        {
+          "__type": "Sandbox.HintPanel",
+          "__guid": "92fef117-cfe1-488b-8595-e27d540e1c86",
+          "__enabled": true,
+          "Flags": 0,
+          "Delay": 20,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "TimeLife": 8
+        },
+        {
+          "__type": "Sandbox.Hud",
+          "__guid": "74979680-dc77-4b8f-8631-ba471be7d6ff",
+          "__enabled": true,
+          "Flags": 0,
+          "DisplayMode": "Combined",
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null
+        },
+        {
+          "__type": "Sandbox.LapsText",
+          "__guid": "461aa462-9092-4394-aaae-82f3e8f12789",
+          "__enabled": true,
+          "Flags": 0,
+          "Duration": 1.5,
+          "OnComponentDestroy": null,
+          "OnComponentDisabled": null,
+          "OnComponentEnabled": null,
+          "OnComponentFixedUpdate": null,
+          "OnComponentStart": null,
+          "OnComponentUpdate": null,
+          "Text": "LAP!"
+        },
+        {
+          "__type": "Sandbox.ShopPanel",
+          "__guid": "8527f3ba-276a-4d8c-96f0-d1b8b6d650b5",
           "__enabled": true,
           "Flags": 0,
           "OnComponentDestroy": null,
@@ -248,7 +325,7 @@
           "RenderTexture": null,
           "TargetEye": "None",
           "Viewport": "0,0,1,1",
-          "ZFar": 10000,
+          "ZFar": 30000,
           "ZNear": 1
         },
         {

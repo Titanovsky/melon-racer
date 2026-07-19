@@ -2,46 +2,81 @@
 @using Sandbox.UI;
 @using Ambi.MelonRacer;
 @using System;
+@using System.Collections.Generic;
+@using System.Threading.Tasks;
 @inherits PanelComponent
 @namespace Sandbox
 
 <root class="@(IsOpen ? "open" : "closed")">
 	@if ( IsOpen )
 	{
-		<div class="vote-panel">
-			<div class="header">
-				<div class="title">VOTE MAP</div>
-				<div class="timer">@VoteSecondsLeft</div>
+		<div class="vote-layout">
+			<div class="vote-panel">
+				<div class="header">
+					<div class="title">VOTE MAP</div>
+					<div class="timer">@VoteSecondsLeft</div>
+				</div>
+				<div class="current-map">CURRENT MAP: @GetMapTitle( Manager?.MapInstance?.MapName ?? string.Empty )</div>
+
+				@if ( HasVoted )
+				{
+					<div class="selected">
+						<div class="selected-label">YOU CHOSE</div>
+						<div class="selected-map">@GetMapTitle( _selectedMapName )</div>
+					</div>
+				}
+				else
+				{
+					<div class="map-list">
+						@foreach ( var mapName in GameManager.MapVoteChoices )
+						{
+							<button class="map-button" onclick=@(() => VoteForMap( mapName ))>
+								@if ( !string.IsNullOrWhiteSpace( GetMapThumbnail( mapName ) ) )
+								{
+									<img class="map-thumbnail" src="@GetMapThumbnail( mapName )" />
+								}
+								else
+								{
+									<div class="map-thumbnail map-thumbnail-placeholder"></div>
+								}
+								<div class="map-info">
+									<div class="map-name">@GetMapTitle( mapName )</div>
+									<div class="vote-count">@GetVotes( mapName ) VOTES</div>
+								</div>
+							</button>
+						}
+					</div>
+				}
 			</div>
-			<div class="current-map">CURRENT MAP: @GetMapTitle( Manager?.MapInstance?.MapName ?? string.Empty )</div>
 
-			@if ( HasVoted )
-			{
-				<div class="selected">
-					<div class="selected-label">YOU CHOSE</div>
-					<div class="selected-map">@GetMapTitle( _selectedMapName )</div>
+			<div class="leaderboard-panel">
+				<div class="leaderboard-title">TOP 10</div>
+				<div class="leaderboard-list">
+					@if ( _leaderboardLoading )
+					{
+						<div class="leaderboard-status">LOADING...</div>
+					}
+					else if ( _leaderboardLoadFailed )
+					{
+						<div class="leaderboard-status">UNAVAILABLE</div>
+					}
+					else if ( _leaderboardEntries.Count == 0 )
+					{
+						<div class="leaderboard-status">NO RESULTS YET</div>
+					}
+					else
+					{
+						@foreach ( var entry in _leaderboardEntries )
+						{
+							<div class="leaderboard-row @GetRankClass( entry.Rank )">
+								<img class="leaderboard-avatar" src="avatar:@entry.SteamId" />
+								<div class="leaderboard-name">@RaceLeaderboardService.FormatDisplayName( entry.DisplayName )</div>
+								<div class="leaderboard-time">@RaceLeaderboardService.FormatTime( entry.Time )</div>
+							</div>
+						}
+					}
 				</div>
-			}
-			else
-			{
-				<div class="map-list">
-					<button class="map-button" onclick=@VoteForFirstMap>
-						<div class="map-thumbnail"></div>
-						<div class="map-info">
-							<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[0] )</div>
-							<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[0] ) VOTES</div>
-						</div>
-					</button>
-
-					<button class="map-button" onclick=@VoteForSecondMap>
-						<div class="map-thumbnail"></div>
-						<div class="map-info">
-							<div class="map-name">@GetMapTitle( GameManager.MapVoteChoices[1] )</div>
-							<div class="vote-count">@GetVotes( GameManager.MapVoteChoices[1] ) VOTES</div>
-						</div>
-					</button>
-				</div>
-			}
+			</div>
 		</div>
 	}
 </root>
@@ -53,22 +88,88 @@
 	private bool HasVoted => IsOpen && !string.IsNullOrWhiteSpace( _selectedMapName );
 	private int VoteSecondsLeft => (int)MathF.Ceiling( Manager?.MapVoteSecondsLeft ?? 0f );
 	private string _selectedMapName;
+	private readonly Dictionary<string, Package> _packages = new();
+	private readonly List<RaceLeaderboardEntry> _leaderboardEntries = new();
+	private bool _leaderboardLoading;
+	private bool _leaderboardLoadFailed;
+	private bool _wasOpen;
+
+	protected override void OnStart()
+	{
+		_ = LoadPackagesAsync();
+	}
 
 	protected override void OnUpdate()
 	{
-		Mouse.Visibility = IsOpen ? MouseVisibility.Visible : MouseVisibility.Hidden;
+		var isOpen = IsOpen;
+
+		if ( isOpen && !_wasOpen )
+		{
+			Manager?.TrySubmitLocalRaceResult();
+			_ = RefreshLeaderboardAsync();
+		}
+
+		_wasOpen = isOpen;
+		Mouse.Visibility = isOpen ? MouseVisibility.Visible : MouseVisibility.Hidden;
 	}
 
-	private void VoteForFirstMap()
+	private async Task RefreshLeaderboardAsync()
 	{
-		Log.Info( "Vote first button clicked" );
-		VoteForMap( GameManager.MapVoteChoices[0] );
+		var mapFullName = Manager?.MapInstance.IsValid() == true
+			? Manager.MapInstance.MapName
+			: string.Empty;
+
+		_leaderboardLoading = true;
+		_leaderboardLoadFailed = false;
+		StateHasChanged();
+
+		try
+		{
+			var entries = await RaceLeaderboardService.GetTopAsync( mapFullName );
+			_leaderboardEntries.Clear();
+			_leaderboardEntries.AddRange( entries );
+		}
+		catch ( Exception exception )
+		{
+			_leaderboardLoadFailed = true;
+			Log.Warning( $"Failed to load leaderboard for {mapFullName}: {exception.Message}" );
+		}
+		finally
+		{
+			_leaderboardLoading = false;
+			StateHasChanged();
+		}
 	}
 
-	private void VoteForSecondMap()
+	private static string GetRankClass( long rank )
 	{
-		Log.Info( "Vote second button clicked" );
-		VoteForMap( GameManager.MapVoteChoices[1] );
+		return rank switch
+		{
+			1 => "rank-first",
+			2 => "rank-second",
+			3 => "rank-third",
+			_ => string.Empty
+		};
+	}
+
+	private async Task LoadPackagesAsync()
+	{
+		foreach ( var mapName in GameManager.MapVoteChoices )
+		{
+			try
+			{
+				var package = await Package.FetchAsync( mapName, true );
+				if ( package is null )
+					continue;
+
+				_packages[mapName] = package;
+				StateHasChanged();
+			}
+			catch ( Exception exception )
+			{
+				Log.Warning( $"Failed to load package info for {mapName}: {exception.Message}" );
+			}
+		}
 	}
 
 	private void VoteForMap( string mapName )
@@ -84,22 +185,21 @@
 
 	private int GetVotes( string mapName )
 	{
-		if ( Manager == null )
-			return 0;
-
-		if ( mapName == GameManager.MapVoteChoices[0] )
-			return Manager.LestoriaVotes;
-
-		if ( mapName == GameManager.MapVoteChoices[1] )
-			return Manager.SnowballVotes;
-
-		return 0;
+		return Manager?.GetMapVoteCount( mapName ) ?? 0;
 	}
 
-	private static string GetMapTitle( string mapName )
+	private string GetMapTitle( string mapName )
 	{
+		if ( _packages.TryGetValue( mapName, out var package ) && !string.IsNullOrWhiteSpace( package.Title ) )
+			return package.Title;
+
 		var parts = mapName.Split( '.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries );
 		return parts.Length >= 2 ? parts[1] : mapName;
+	}
+
+	private string GetMapThumbnail( string mapName )
+	{
+		return _packages.TryGetValue( mapName, out var package ) ? package.Thumb : string.Empty;
 	}
 
 	protected override int BuildHash()
@@ -107,12 +207,26 @@
 		if ( !IsOpen && !string.IsNullOrWhiteSpace( _selectedMapName ) )
 			_selectedMapName = null;
 
-		return HashCode.Combine(
-			IsOpen,
-			_selectedMapName,
-			VoteSecondsLeft,
-			Manager?.LestoriaVotes,
-			Manager?.SnowballVotes,
-			Manager?.MapInstance?.MapName );
+		var hash = new HashCode();
+		hash.Add( IsOpen );
+		hash.Add( _selectedMapName );
+		hash.Add( VoteSecondsLeft );
+		hash.Add( Manager?.LestoriaVotes );
+		hash.Add( Manager?.SnowballVotes );
+		hash.Add( Manager?.FlatgrassVotes );
+		hash.Add( _packages.Count );
+		hash.Add( Manager?.MapInstance?.MapName );
+		hash.Add( _leaderboardLoading );
+		hash.Add( _leaderboardLoadFailed );
+
+		foreach ( var entry in _leaderboardEntries )
+		{
+			hash.Add( entry.Rank );
+			hash.Add( entry.SteamId );
+			hash.Add( entry.DisplayName );
+			hash.Add( entry.Time );
+		}
+
+		return hash.ToHashCode();
 	}
 }

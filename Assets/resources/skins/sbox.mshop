@@ -1,0 +1,12 @@
+{
+  "Header": "s&box",
+  "Price": 30,
+  "Model": "models/sbox_props/watermelon/watermelon.vmdl",
+  "Scale": 1,
+  "SphereRadius": 11,
+  "SphereCenter": "0,0,11",
+  "__references": [
+    "facepunch.watermelon#288901"
+  ],
+  "__version": 0
+}

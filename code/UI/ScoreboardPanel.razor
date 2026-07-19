@@ -1,39 +1,106 @@
 @using Sandbox;
 @using Sandbox.UI;
 @using Ambi.MelonRacer;
+@using System;
 @using System.Collections.Generic;
 @using System.Linq;
+@using System.Threading.Tasks;
 @inherits PanelComponent
 @namespace Sandbox
 
-@if ( !IsOpen )
-	return;
-
-<root>
-	<div class="scoreboard">
-		<div class="scoreboard-header">
-			<div class="map-name">@MapName</div>
-			<div class="online-count">Online: @Connections.Count</div>
-		</div>
-
-		<div class="player-list">
-			@foreach ( var connection in Connections )
-			{
-				<div class="player-row">
-					<img class="avatar" src="avatar:@connection.SteamId" onclick=@( () => OpenProfile( connection ) ) />
-					<div class="player-name">@connection.DisplayName</div>
-					<div class="player-ping">@FormatPing( connection )</div>
+<root class=@( IsOpen ? "open" : "" )>
+	@if ( IsOpen )
+	{
+		<div class="scoreboard-layout">
+			<div class="scoreboard">
+				<div class="scoreboard-header">
+					<div class="map-name">@MapName</div>
+					<div class="online-count">Online: @Connections.Count</div>
 				</div>
-			}
+
+				<div class="player-list">
+					@foreach ( var connection in Connections )
+					{
+						var melon = GetMelon( connection );
+						<div class="player-row">
+							<img class="avatar" src="avatar:@connection.SteamId" onclick=@( () => OpenProfile( connection ) ) />
+							<div class="player-name">
+								<span class="player-name-text">@connection.DisplayName</span>
+								@if ( connection.IsHost )
+								{
+									<span class="host-crown">👑</span>
+								}
+							</div>
+							<div class="player-stats">
+								<div class="player-stat laps-stat">
+									<img class="stat-icon" src="materials/icons/finish.vtex" />
+									<span class="stat-value">@(melon?.CompletedLaps ?? 0)</span>
+								</div>
+								<div class="player-stat coins-stat">
+									<img class="stat-icon" src="materials/icons/coin.vtex" />
+									<span class="stat-value">@(melon?.Coins ?? 0)</span>
+								</div>
+							</div>
+							@if ( CanKick( connection ) )
+							{
+								<button class="kick-button" onclick=@( () => Kick( connection ) )>kick</button>
+							}
+							else
+							{
+								<div class="kick-placeholder"></div>
+							}
+							<div class="player-ping">@FormatPing( connection )</div>
+						</div>
+					}
+				</div>
+			</div>
+
+			<div class="leaderboard-panel">
+				<div class="leaderboard-title">TOP 10</div>
+				<div class="leaderboard-list">
+					@if ( _leaderboardLoading && _leaderboardEntries.Count == 0 )
+					{
+						<div class="leaderboard-status">LOADING...</div>
+					}
+					else if ( _leaderboardLoadFailed && _leaderboardEntries.Count == 0 )
+					{
+						<div class="leaderboard-status">UNAVAILABLE</div>
+					}
+					else if ( _leaderboardEntries.Count == 0 )
+					{
+						<div class="leaderboard-status">NO RESULTS YET</div>
+					}
+					else
+					{
+						@foreach ( var entry in _leaderboardEntries )
+						{
+							<div class="leaderboard-row @GetRankClass( entry.Rank )">
+								<img class="leaderboard-avatar" src="avatar:@entry.SteamId" />
+								<div class="leaderboard-name">@RaceLeaderboardService.FormatDisplayName( entry.DisplayName )</div>
+								<div class="leaderboard-time">@RaceLeaderboardService.FormatTime( entry.Time )</div>
+							</div>
+						}
+					}
+				</div>
+			</div>
 		</div>
-	</div>
+	}
 </root>
 
 @code
 {
 	private bool IsOpen => Input.Down( "Score" );
+	private bool IsLocalHost => Networking.IsHost;
 	private GameManager Manager => GameManager.Instance;
 	private List<Connection> Connections => Connection.All.ToList();
+	private const float LeaderboardRefreshInterval = 10f;
+	private readonly List<RaceLeaderboardEntry> _leaderboardEntries = new();
+	private TimeUntil _leaderboardRefreshTimer;
+	private bool _leaderboardRefreshStarted;
+	private bool _leaderboardLoading;
+	private bool _leaderboardLoadFailed;
+	private bool _wasOpen;
+	private string _leaderboardMapName;
 
 	private string MapName
 	{
@@ -51,12 +118,95 @@
 
 	private static string FormatPing( Connection connection )
 	{
-		return $"{System.MathF.Round( connection.Ping )} ms";
+		return System.MathF.Round( connection.Ping ).ToString();
 	}
 
 	private static void OpenProfile( Connection connection )
 	{
 		Game.Overlay.ShowPlayer( connection.SteamId );
+	}
+
+	private Melon GetMelon( Connection connection )
+	{
+		return Scene.GetAllComponents<Melon>().FirstOrDefault( melon =>
+			melon.IsValid()
+			&& melon.GameObject.Network.Owner is Connection owner
+			&& owner.Id == connection.Id );
+	}
+
+	protected override void OnUpdate()
+	{
+		var isOpen = IsOpen;
+		var mapFullName = GetMapFullName();
+		var shouldRefresh = isOpen && !_leaderboardLoading && (
+			!_wasOpen
+			|| !string.Equals( mapFullName, _leaderboardMapName, StringComparison.OrdinalIgnoreCase )
+			|| (_leaderboardRefreshStarted && _leaderboardRefreshTimer) );
+
+		if ( shouldRefresh )
+			_ = RefreshLeaderboardAsync( mapFullName );
+
+		_wasOpen = isOpen;
+
+		Mouse.Visibility = isOpen || Manager?.IsMapVoteOpen == true
+			? MouseVisibility.Visible
+			: MouseVisibility.Hidden;
+	}
+
+	private string GetMapFullName()
+	{
+		return Manager?.MapInstance.IsValid() == true ? Manager.MapInstance.MapName : string.Empty;
+	}
+
+	private async Task RefreshLeaderboardAsync( string mapFullName )
+	{
+		_leaderboardLoading = true;
+		_leaderboardLoadFailed = false;
+		_leaderboardMapName = mapFullName;
+		StateHasChanged();
+
+		try
+		{
+			var entries = await RaceLeaderboardService.GetTopAsync( mapFullName );
+			_leaderboardEntries.Clear();
+			_leaderboardEntries.AddRange( entries );
+		}
+		catch ( Exception exception )
+		{
+			_leaderboardLoadFailed = true;
+			Log.Warning( $"Failed to load leaderboard for {mapFullName}: {exception.Message}" );
+		}
+		finally
+		{
+			_leaderboardLoading = false;
+			_leaderboardRefreshStarted = true;
+			_leaderboardRefreshTimer = LeaderboardRefreshInterval;
+			StateHasChanged();
+		}
+	}
+
+	private static string GetRankClass( long rank )
+	{
+		return rank switch
+		{
+			1 => "rank-first",
+			2 => "rank-second",
+			3 => "rank-third",
+			_ => string.Empty
+		};
+	}
+
+	private bool CanKick( Connection connection )
+	{
+		return IsLocalHost && connection is not null && connection.IsActive && !connection.IsHost;
+	}
+
+	private void Kick( Connection connection )
+	{
+		if ( !CanKick( connection ) )
+			return;
+
+		connection.Kick( "Kicked by host" );
 	}
 
 	protected override int BuildHash()
@@ -69,12 +219,27 @@
 
 		hash.Add( MapName );
 		hash.Add( Connections.Count );
-
+		hash.Add( IsLocalHost );
+		hash.Add( _leaderboardLoading );
+		hash.Add( _leaderboardLoadFailed );
+		hash.Add( _leaderboardMapName );
 		foreach ( var connection in Connections )
 		{
+			var melon = GetMelon( connection );
 			hash.Add( connection.SteamId );
 			hash.Add( connection.DisplayName );
 			hash.Add( System.MathF.Round( connection.Ping ) );
+			hash.Add( connection.IsHost );
+			hash.Add( melon?.CompletedLaps ?? 0 );
+			hash.Add( melon?.Coins ?? 0 );
+		}
+
+		foreach ( var entry in _leaderboardEntries )
+		{
+			hash.Add( entry.Rank );
+			hash.Add( entry.SteamId );
+			hash.Add( entry.DisplayName );
+			hash.Add( entry.Time );
 		}
 
 		return hash.ToHashCode();

@@ -1,0 +1,58 @@
+KeyboardsPanel {
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	padding-left: 12px;
+	justify-content: flex-start;
+	align-items: center;
+	font-family: Poppins;
+	pointer-events: none;
+
+	.keyboard-list {
+		flex-direction: column;
+		gap: 5px;
+	}
+
+	.keyboard-row {
+		min-height: 28px;
+		flex-direction: row;
+		align-items: center;
+		gap: 4px;
+	}
+
+	.keys {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.key {
+		min-width: 28px;
+		height: 28px;
+		padding: 0 6px;
+		justify-content: center;
+		align-items: center;
+		background-color: rgba( 12, 15, 20, 0.82 );
+		border-radius: 6px;
+		box-shadow: 0 2px 0 rgba( 0, 0, 0, 0.5 );
+		color: #fff;
+		font-family: Poppins;
+		font-size: 16px;
+		font-weight: 800;
+		text-align: center;
+
+		&.wide {
+			min-width: 42px;
+		}
+	}
+
+	.description {
+		color: #fff;
+		font-family: Poppins;
+		font-size: 12px;
+		font-weight: 600;
+		white-space: nowrap;
+		text-shadow: 0 1px 3px rgba( 0, 0, 0, 0.9 );
+	}
+}

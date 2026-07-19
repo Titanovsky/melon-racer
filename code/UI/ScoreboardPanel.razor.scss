@@ -1,5 +1,4 @@
-ScoreboardPanel
-{
+ScoreboardPanel {
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -11,18 +10,29 @@ ScoreboardPanel
 	pointer-events: none;
 	z-index: 500;
 
-	.scoreboard
-	{
-		width: 780px;
+	&.open {
+		pointer-events: all;
+	}
+
+	.scoreboard-layout {
 		max-height: 68%;
+		flex-direction: row;
+		align-items: stretch;
+		gap: 8px;
+		pointer-events: all;
+	}
+
+	.scoreboard {
+		width: 780px;
 		flex-direction: column;
 		padding: 22px;
 		background-color: rgba( 10, 12, 16, 0.82 );
 		border-radius: 10px;
+		pointer-events: all;
+		overflow: hidden;
 	}
 
-	.scoreboard-header
-	{
+	.scoreboard-header {
 		width: 100%;
 		min-height: 42px;
 		flex-direction: row;
@@ -31,25 +41,21 @@ ScoreboardPanel
 	}
 
 	.map-name,
-	.online-count
-	{
+	.online-count {
 		color: #fff;
 		font-family: Poppins;
 		font-weight: 900;
 	}
 
-	.map-name
-	{
+	.map-name {
 		font-size: 27px;
 	}
 
-	.online-count
-	{
+	.online-count {
 		font-size: 21px;
 	}
 
-	.player-list
-	{
+	.player-list {
 		width: 100%;
 		margin-top: 14px;
 		flex-direction: column;
@@ -57,8 +63,7 @@ ScoreboardPanel
 		overflow: scroll;
 	}
 
-	.player-row
-	{
+	.player-row {
 		width: 100%;
 		min-height: 58px;
 		flex-direction: row;
@@ -69,8 +74,7 @@ ScoreboardPanel
 		border-radius: 7px;
 	}
 
-	.avatar
-	{
+	.avatar {
 		width: 44px;
 		height: 44px;
 		border-radius: 7px;
@@ -78,25 +82,189 @@ ScoreboardPanel
 		pointer-events: all;
 	}
 
-	.player-name
-	{
+	.player-name {
 		min-width: 0;
 		flex-grow: 1;
+		flex-direction: row;
+		align-items: center;
+		gap: 7px;
 		color: #fff;
 		font-size: 20px;
+		font-weight: 700;
+	}
+
+	.player-name-text {
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+
+	.host-crown {
+		flex-shrink: 0;
+		font-size: 21px;
+	}
+
+	.player-stats {
+		width: 190px;
+		flex-shrink: 0;
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+		gap: 18px;
+	}
+
+	.player-stat {
+		width: 86px;
+		height: 32px;
+		flex-shrink: 0;
+		flex-direction: row;
+		justify-content: center;
+		align-items: center;
+		gap: 7px;
+	}
+
+	.stat-icon {
+		width: 24px;
+		height: 24px;
+		flex-shrink: 0;
+	}
+
+	.stat-value {
+		color: #fff;
+		font-size: 16px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.player-ping {
+		width: 54px;
+		flex-shrink: 0;
+		color: rgba( 255, 255, 255, 0.76 );
+		font-size: 18px;
+		font-weight: 700;
+		text-align: right;
+	}
+
+	.kick-button {
+		width: 70px;
+		flex-shrink: 0;
+		height: 34px;
+		padding: 0 12px;
+		justify-content: center;
+		align-items: center;
+		background-color: rgba( 210, 72, 72, 0.72 );
+		border-radius: 6px;
+		color: #fff;
+		font-family: Poppins;
+		font-size: 15px;
+		font-weight: 800;
+		pointer-events: all;
+
+		&:hover {
+			background-color: rgba( 230, 82, 82, 0.9 );
+		}
+
+		&:active {
+			background-color: rgba( 180, 52, 52, 0.95 );
+		}
+	}
+
+	.kick-placeholder {
+		width: 70px;
+		flex-shrink: 0;
+	}
+
+	.leaderboard-panel {
+		width: 390px;
+		flex-direction: column;
+		padding: 22px;
+		background-color: rgba( 10, 12, 16, 0.82 );
+		border-radius: 10px;
+		pointer-events: all;
+		overflow: hidden;
+	}
+
+	.leaderboard-title {
+		min-height: 42px;
+		justify-content: center;
+		align-items: center;
+		color: #fff;
+		font-size: 27px;
+		font-weight: 900;
+	}
+
+	.leaderboard-list {
+		width: 100%;
+		min-height: 0;
+		flex-grow: 1;
+		margin-top: 14px;
+		flex-direction: column;
+		gap: 7px;
+		overflow: scroll;
+	}
+
+	.leaderboard-row {
+		width: 100%;
+		min-height: 50px;
+		flex-direction: row;
+		align-items: center;
+		gap: 10px;
+		padding: 5px 10px;
+		background-color: rgba( 255, 255, 255, 0.07 );
+		border-radius: 7px;
+		color: #fff;
+	}
+
+	.leaderboard-avatar {
+		width: 40px;
+		height: 40px;
+		flex-shrink: 0;
+		border-radius: 50%;
+	}
+
+	.leaderboard-name {
+		min-width: 0;
+		flex-grow: 1;
+		color: inherit;
+		font-size: 16px;
 		font-weight: 700;
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
 
-	.player-ping
-	{
-		width: 90px;
+	.leaderboard-time {
+		margin-left: 8px;
 		flex-shrink: 0;
-		color: rgba( 255, 255, 255, 0.76 );
-		font-size: 18px;
-		font-weight: 700;
-		text-align: right;
+		color: inherit;
+		font-size: 15px;
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	.rank-first {
+		color: #ffd24a;
+	}
+
+	.rank-second {
+		color: #d7dde8;
+	}
+
+	.rank-third {
+		color: #cd8b53;
+	}
+
+	.leaderboard-status {
+		width: 100%;
+		min-height: 50px;
+		justify-content: center;
+		align-items: center;
+		color: rgba( 255, 255, 255, 0.62 );
+		font-size: 15px;
+		font-weight: 800;
+		text-align: center;
 	}
 }

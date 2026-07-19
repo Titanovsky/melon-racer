@@ -1,0 +1,161 @@
+{
+  "RootObject": {
+    "__guid": "02662ad4-8606-46f3-bcea-d530f9f7d50f",
+    "__version": 2,
+    "Flags": 0,
+    "Name": "coin",
+    "Position": "0,0,0",
+    "Rotation": "0,0,0,1",
+    "Scale": "1,1,1",
+    "Tags": "light_point,light",
+    "Enabled": true,
+    "NetworkMode": 1,
+    "NetworkFlags": 0,
+    "NetworkOrphaned": 1,
+    "NetworkTransmit": true,
+    "OwnerTransfer": 1,
+    "Components": [
+      {
+        "__type": "Coin",
+        "__guid": "1e9e4755-f905-4eaf-a11e-272f4caa3491",
+        "__enabled": true,
+        "Flags": 0,
+        "MovementAmplitude": 4,
+        "MovementSpeed": 2,
+        "OnComponentDestroy": null,
+        "OnComponentDisabled": null,
+        "OnComponentEnabled": null,
+        "OnComponentFixedUpdate": null,
+        "OnComponentStart": null,
+        "OnComponentUpdate": null,
+        "ParticleTouch": {
+          "_type": "gameobject",
+          "prefab": "prefabs/particles/prt_coin_touch.prefab"
+        },
+        "PointLight": {
+          "_type": "component",
+          "component_id": "67c7c7f3-a514-4b5a-96bc-62e17c1a0a4b",
+          "go": "02662ad4-8606-46f3-bcea-d530f9f7d50f",
+          "component_type": "PointLight"
+        },
+        "Renderer": {
+          "_type": "component",
+          "component_id": "48ba6004-e72b-4f86-bca4-474ba2307259",
+          "go": "02662ad4-8606-46f3-bcea-d530f9f7d50f",
+          "component_type": "ModelRenderer"
+        },
+        "RotationSpeed": 64,
+        "SoundTouch": "sounds/coin.sound"
+      },
+      {
+        "__type": "Sandbox.ModelRenderer",
+        "__guid": "48ba6004-e72b-4f86-bca4-474ba2307259",
+        "__enabled": true,
+        "Flags": 0,
+        "BodyGroups": 18446744073709551615,
+        "CreateAttachments": false,
+        "LodOverride": null,
+        "MaterialGroup": null,
+        "MaterialOverride": null,
+        "Materials": {
+          "indexed": {
+            "0": "materials/coin_melon.vmat"
+          }
+        },
+        "Model": "models/sterling/smodel_coin/smodel_coin.vmdl",
+        "OnComponentDestroy": null,
+        "OnComponentDisabled": null,
+        "OnComponentEnabled": null,
+        "OnComponentFixedUpdate": null,
+        "OnComponentStart": null,
+        "OnComponentUpdate": null,
+        "RenderOptions": {
+          "GameLayer": true,
+          "OverlayLayer": false,
+          "BloomLayer": false,
+          "AfterUILayer": false
+        },
+        "RenderType": "Off",
+        "Tint": "1,1,1,1"
+      },
+      {
+        "__type": "Sandbox.BoxCollider",
+        "__guid": "3acfaa06-9822-469b-8dad-b4c3c35f2c91",
+        "__enabled": true,
+        "Flags": 0,
+        "Center": "1.35695648,-2.81332779,0.889554024",
+        "ColliderFlags": 0,
+        "Elasticity": null,
+        "Friction": null,
+        "IsTrigger": true,
+        "OnComponentDestroy": null,
+        "OnComponentDisabled": null,
+        "OnComponentEnabled": null,
+        "OnComponentFixedUpdate": null,
+        "OnComponentStart": null,
+        "OnComponentUpdate": null,
+        "OnObjectTriggerEnter": null,
+        "OnObjectTriggerExit": null,
+        "OnTriggerEnter": null,
+        "OnTriggerExit": null,
+        "RollingResistance": null,
+        "Scale": "28.0617943,26.7284241,25.8074532",
+        "Static": false,
+        "Surface": null,
+        "SurfaceVelocity": "0,0,0"
+      },
+      {
+        "__type": "Sandbox.PointLight",
+        "__guid": "67c7c7f3-a514-4b5a-96bc-62e17c1a0a4b",
+        "__enabled": false,
+        "Flags": 0,
+        "Attenuation": 2,
+        "Contribution": "Diffuse, Specular, Transmissive",
+        "FogMode": "Enabled",
+        "FogStrength": 1,
+        "LightColor": "0.93488,0.89488,0.1348,1",
+        "OnComponentDestroy": null,
+        "OnComponentDisabled": null,
+        "OnComponentEnabled": null,
+        "OnComponentFixedUpdate": null,
+        "OnComponentStart": null,
+        "OnComponentUpdate": null,
+        "Radius": 128,
+        "ShadowBias": 0.0005,
+        "ShadowHardness": 0,
+        "Shadows": true
+      }
+    ],
+    "Children": [],
+    "__properties": {
+      "NetworkInterpolation": true,
+      "TimeScale": 1,
+      "WantsSystemScene": true,
+      "Metadata": {},
+      "NavMesh": {
+        "Enabled": false,
+        "IncludeStaticBodies": true,
+        "IncludeKeyframedBodies": true,
+        "EditorAutoUpdate": false,
+        "AgentHeight": 64,
+        "AgentRadius": 16,
+        "AgentStepSize": 18,
+        "AgentMaxSlope": 40,
+        "ExcludedBodies": "",
+        "IncludedBodies": "",
+        "DeferGeneration": false,
+        "CustomBounds": false
+      }
+    },
+    "__variables": []
+  },
+  "ResourceVersion": 2,
+  "ShowInMenu": false,
+  "MenuPath": null,
+  "MenuIcon": null,
+  "DontBreakAsTemplate": false,
+  "__references": [
+    "smd.dontbeweird3#2280"
+  ],
+  "__version": 2
+}
